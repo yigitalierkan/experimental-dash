@@ -123,7 +123,13 @@ export const meStore = {
 };
 /** Team data from data/*.json, or the visitor's own computed data in "?me" mode. */
 export async function getData(kind) {
-  if (!ME) return loadJson(`data/${kind}.json`);
+  if (!ME) {
+    try { return await loadJson(`data/${kind}.json`); } catch (e) {
+      // site published without team data (public mode) → own data if present, else connect page
+      location.href = meStore.get(kind) ? `${location.pathname}?me${location.hash}` : 'connect.html';
+      throw e;
+    }
+  }
   const v = meStore.get(kind);
   if (!v) { location.href = 'connect.html'; throw new Error('Kendi verin henüz yüklenmedi'); }
   return v;

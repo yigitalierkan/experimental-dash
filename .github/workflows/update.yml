@@ -49,8 +49,8 @@ jobs:
           PROXY_URL: ${{ vars.PROXY_URL }}
         run: |
           if [ -z "$ONAIR_API_KEY" ] || { [ -z "$ONAIR_VA_ID" ] && [ -z "$ONAIR_COMPANY_ID" ]; }; then
-            echo "::warning::ONAIR_API_KEY / ONAIR_VA_ID secret'ları yok — demo veriyle yayınlanıyor."
-            node scripts/build.mjs --mock
+            echo "::notice::OnAir secret'ları yok — herkese açık modda yayınlanıyor (ziyaretçiler kendi verisiyle bağlanır)."
+            node scripts/build.mjs --public
           else
             node scripts/build.mjs --cache /tmp/prev.json.gz
           fi

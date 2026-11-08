@@ -3,7 +3,7 @@
 //   ONAIR_API_KEY=... ONAIR_COMPANY_ID=... node scripts/build.mjs     # live
 //   node scripts/build.mjs --mock                                     # örnek veriyle
 //   node scripts/build.mjs --raw path/to/raw.json                     # kayıtlı snapshot'tan
-import { mkdir, writeFile, readFile, copyFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, copyFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OnAirClient, fetchSnapshot, slimSnapshot } from './lib/onair-client.mjs';
@@ -23,6 +23,23 @@ const settings = {
   idleHours: Number(env.IDLE_HOURS || 24),
   flightDays: Number(env.FLIGHT_DAYS || 30),
 };
+
+const proxyUrl = (env.PROXY_URL || (await readFile(join(root, 'proxy', 'url.txt'), 'utf8').catch(() => '')) || '').trim().replace(/\/$/, '');
+async function writeShared() {
+  // Browser-side "Kendi verin" mode reuses the exact same pure modules.
+  await mkdir(join(root, 'site', 'lib'), { recursive: true });
+  for (const f of ['onair-client.mjs', 'metrics.mjs', 'ledger.mjs']) await copyFile(join(root, 'scripts', 'lib', f), join(root, 'site', 'lib', f));
+  await writeFile(join(root, 'site', 'config.json'), JSON.stringify({ proxyUrl, team: !flag('--public') }));
+}
+
+if (flag('--public')) {
+  // No team credentials: publish the app only — every visitor connects with their own key.
+  await rm(outDir, { recursive: true, force: true });
+  await mkdir(outDir, { recursive: true });
+  await writeShared();
+  console.log(`✓ Herkese açık mod: ortak veri yok, proxy=${proxyUrl || '(yok)'}`);
+  process.exit(0);
+}
 
 let raw;
 if (flag('--mock')) {
@@ -72,10 +89,7 @@ const debug = {
 };
 
 await mkdir(outDir, { recursive: true });
-// Browser-side "Kendi verin" mode reuses the exact same pure modules.
-await mkdir(join(root, 'site', 'lib'), { recursive: true });
-for (const f of ['onair-client.mjs', 'metrics.mjs', 'ledger.mjs']) await copyFile(join(root, 'scripts', 'lib', f), join(root, 'site', 'lib', f));
-await writeFile(join(root, 'site', 'config.json'), JSON.stringify({ proxyUrl: (env.PROXY_URL || '').replace(/\/$/, '') }));
+await writeShared();
 await writeFile(join(outDir, 'dashboard.json'), JSON.stringify(dashboard));
 await writeFile(join(outDir, 'routes.json'), JSON.stringify(routes));
 await writeFile(join(outDir, 'debug.json'), JSON.stringify(debug, null, 2));

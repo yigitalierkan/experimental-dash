@@ -1,7 +1,7 @@
 name: Deploy proxy (Cloudflare Worker)
 
 # One-time setup for the "Kendi verin" tab. Needs repo secrets:
-#   CLOUDFLARE_API_TOKEN  (template "Edit Cloudflare Workers")
+#   CLOUDFLARE_API_TOKEN  (Account: Workers Scripts Edit + Account Settings Read)
 #   CLOUDFLARE_ACCOUNT_ID
 on:
   workflow_dispatch:
@@ -13,14 +13,40 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OWNER: ${{ github.repository_owner }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Ensure a workers.dev subdomain exists
+        run: |
+          api="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain"
+          sub=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "$api" | jq -r '.result.subdomain // empty')
+          if [ -z "$sub" ]; then
+            for cand in "${OWNER,,}" "${OWNER,,}-onair" "${OWNER,,}-onair-$RANDOM"; do
+              r=$(curl -s -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" "$api" -d "{\"subdomain\":\"$cand\"}")
+              echo "$r" | jq -c '{success, errors}'
+              if [ "$(echo "$r" | jq -r .success)" = "true" ]; then sub="$cand"; break; fi
+            done
+          fi
+          [ -n "$sub" ] || { echo "::error::workers.dev alt alan adı oluşturulamadı (token'a 'Account Settings: Edit' gerekebilir ya da panelden Workers & Pages sayfasını bir kez açın)."; exit 1; }
+          echo "workers.dev alt alan adı: $sub"
+          echo "SUBDOMAIN=$sub" >> "$GITHUB_ENV"
+
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: proxy
           command: deploy --var ALLOWED_ORIGINS:https://${{ github.repository_owner }}.github.io,http://localhost:8080
-      - name: Next step
+
+      - name: Health check
         run: |
-          echo "::notice::Worker URL'sini (https://onair-proxy.<hesabın>.workers.dev) repo değişkeni PROXY_URL olarak ekle, sonra 'Update dashboard' iş akışını çalıştır."
+          url="https://onair-proxy.${SUBDOMAIN}.workers.dev"
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url/health" -H "Origin: https://${OWNER,,}.github.io")
+            echo "health $code"; [ "$code" = "200" ] && break; sleep 10
+          done
+          echo "::notice::PROXY_URL=$url"
