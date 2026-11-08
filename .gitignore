@@ -2,3 +2,5 @@ node_modules/
 site/data/
 raw-snapshot.json
 .DS_Store
+site/lib/
+site/config.json

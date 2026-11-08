@@ -1,4 +1,4 @@
-import { $, esc, fmt, loadJson, statusPill, renderTable, renderBars, demoBanner, showTip, hideTip, terminalHeader } from './common.js';
+import { $, esc, fmt, loadJson, statusPill, renderTable, renderBars, demoBanner, showTip, hideTip, terminalHeader, getData, ME } from './common.js';
 
 const DAY = 86400_000;
 const state = { period: '30', lease: 'cash', overhead: true, former: true, q: '', sel: null };
@@ -202,7 +202,7 @@ function idleTable() {
 // ---------------------------------------------------------------- detail
 function select(id) {
   state.sel = state.sel === id ? null : id;
-  history.replaceState(null, '', state.sel ? '#' + encodeURIComponent(LG.aircraft.find((a) => a.id === id)?.registration || '') : location.pathname);
+  history.replaceState(null, '', location.pathname + location.search + (state.sel ? '#' + encodeURIComponent(LG.aircraft.find((a) => a.id === id)?.registration || '') : ''));
   render();
   if (state.sel) $('#detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -278,7 +278,7 @@ function seg(id, fn) {
 
 (async () => {
   try {
-    D = await loadJson('data/dashboard.json');
+    D = await getData('dashboard');
   } catch (e) {
     terminalHeader('fleet', null);
     $('main').innerHTML = `<div class="banner">VERİ YÜKLENEMEDİ: ${esc(e.message)}</div>`;

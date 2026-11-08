@@ -1,0 +1,8 @@
+name = "onair-proxy"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+# Overridden at deploy time by .github/workflows/deploy-proxy.yml (https://<owner>.github.io)
+[vars]
+ALLOWED_ORIGINS = "http://localhost:8080"

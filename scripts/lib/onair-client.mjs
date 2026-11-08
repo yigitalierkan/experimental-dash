@@ -28,11 +28,9 @@ export class OnAirClient {
       let res;
       try {
         res = await fetch(url, {
-          headers: {
-            'oa-apikey': this.apiKey,
-            Accept: 'application/json',
-            'User-Agent': 'onair-dashboard (github actions)',
-          },
+          headers: typeof window === 'undefined'
+            ? { 'oa-apikey': this.apiKey, Accept: 'application/json', 'User-Agent': 'onair-dashboard (github actions)' }
+            : { 'oa-apikey': this.apiKey, Accept: 'application/json' }, // browsers manage User-Agent themselves
           signal: AbortSignal.timeout(30_000),
         });
       } catch (e) {

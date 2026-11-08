@@ -46,6 +46,7 @@ jobs:
           IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
           FLIGHT_DAYS: ${{ vars.FLIGHT_DAYS || '30' }}
           FETCH_BUDGET_MS: "420000"
+          PROXY_URL: ${{ vars.PROXY_URL }}
         run: |
           if [ -z "$ONAIR_API_KEY" ] || { [ -z "$ONAIR_VA_ID" ] && [ -z "$ONAIR_COMPANY_ID" ]; }; then
             echo "::warning::ONAIR_API_KEY / ONAIR_VA_ID secret'ları yok — demo veriyle yayınlanıyor."
@@ -58,6 +59,7 @@ jobs:
         if: steps.fetch.outcome != 'success'
         env:
           IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
+          PROXY_URL: ${{ vars.PROXY_URL }}
         run: |
           if [ -f /tmp/prev.json.gz ]; then
             echo "::warning::Canlı veri alınamadı; son snapshot ile yeniden derleniyor (yeni tasarım yine de yayınlanır)."

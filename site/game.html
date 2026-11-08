@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A320 FLAP</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22%23ffa028%22/%3E%3Ctext x=%2250%22 y=%2272%22 font-size=%2266%22 text-anchor=%22middle%22%3E%E2%9C%88%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    .stage { display: grid; place-items: center; padding: 10px 0; }
+    canvas#game { image-rendering: pixelated; image-rendering: crisp-edges; width: min(100%, 1152px); aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--amber-dim); touch-action: none; }
+    .keys { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; color: var(--text-2); font-size: 11px; padding: 6px; }
+    .keys kbd { background: #2a2a2a; color: var(--yellow); border: 1px solid #444; padding: 0 5px; font: inherit; }
+  </style>
+</head>
+<body>
+<header class="top"></header>
+<main>
+  <section class="panel">
+    <div class="ph"><h2>A320 FLAP — 8-bit</h2><span class="spacer"></span><span class="meta" id="hi"></span></div>
+    <div class="stage"><canvas id="game" width="384" height="216" aria-label="A320 Flap oyunu"></canvas></div>
+    <div class="keys">
+      <span><kbd>↑</kbd> / <kbd>Space</kbd> tırman</span>
+      <span><kbd>↓</kbd> dalış</span>
+      <span><kbd>←</kbd> <kbd>→</kbd> gaz (hız)</span>
+      <span><kbd>P</kbd> duraklat</span>
+      <span><kbd>M</kbd> ses</span>
+      <span>Mobil: ekrana dokun</span>
+    </div>
+  </section>
+</main>
+<script type="module" src="assets/game.js"></script>
+</body>
+</html>

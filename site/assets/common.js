@@ -113,23 +113,42 @@ export function setUpdated(el, d) {
   el.innerHTML = `DATA <span class="${mins > 90 ? 'neg' : 'pos'}">${new Date(t).toISOString().slice(11, 16)}Z</span> <span class="muted">(${mins < 60 ? mins + 'dk' : Math.round(mins / 60) + 's'})</span>`;
 }
 
+// ---------------------------------------------------------------- personal ("Kendi verin") mode
+export const ME = new URLSearchParams(location.search).has('me');
+const meKey = (k) => `oa:me:${k}`;
+export const meStore = {
+  get(k) { for (const st of [sessionStorage, localStorage]) { try { const v = st.getItem(meKey(k)); if (v) return JSON.parse(v); } catch {} } return null; },
+  set(k, v, persist) { const s = JSON.stringify(v); try { sessionStorage.setItem(meKey(k), s); } catch {} if (persist) { try { localStorage.setItem(meKey(k), s); } catch {} } },
+  clear() { for (const st of [sessionStorage, localStorage]) for (const k of Object.keys(st)) if (k.startsWith('oa:me:')) st.removeItem(k); },
+};
+/** Team data from data/*.json, or the visitor's own computed data in "?me" mode. */
+export async function getData(kind) {
+  if (!ME) return loadJson(`data/${kind}.json`);
+  const v = meStore.get(kind);
+  if (!v) { location.href = 'connect.html'; throw new Error('Kendi verin henüz yüklenmedi'); }
+  return v;
+}
+const withMe = (href) => (ME ? `${href}?me` : href);
+
 /** Terminal header: brand, command line, function keys, UTC clock. */
 export function terminalHeader(active, d) {
-  const name = d?.company?.name || 'ONAIR';
+  const name = d?.company?.name || (active === 'game' ? 'ARCADE' : 'ONAIR');
   const code = d?.company?.code || '';
   const h = document.querySelector('header.top');
-  h.innerHTML = `<div class="brand">${esc(code || 'OA')}</div>
-    <div class="cmd">${esc(name.toUpperCase())} <b>${active === 'fleet' ? 'FLEET P&L' : 'ROUTES'}</b> <span class="go">&lt;GO&gt;</span></div>
-    <nav class="fkeys"><a href="index.html" class="${active === 'fleet' ? 'active' : ''}"><kbd>F1</kbd>Filo</a><a href="routes.html" class="${active === 'routes' ? 'active' : ''}"><kbd>F2</kbd>Rotalar</a></nav>
+  const title = { fleet: 'FLEET P&L', routes: 'ROUTES', connect: 'CONNECT', game: 'A320 FLAP' }[active];
+  const tabs = [['fleet', withMe('index.html'), 'F1', 'Filo'], ['routes', withMe('routes.html'), 'F2', 'Rotalar'], ['connect', 'connect.html', 'F3', 'Kendi verin'], ['game', 'game.html', 'F4', 'Oyun']];
+  h.innerHTML = `<div class="brand${ME ? ' me' : ''}">${esc(ME ? 'ME' : code || 'OA')}</div>
+    <div class="cmd">${esc(name.toUpperCase())} <b>${title}</b> <span class="go">&lt;GO&gt;</span>${ME ? ' <span class="tag">KENDİ VERİN</span>' : ''}</div>
+    <nav class="fkeys">${tabs.map(([k, href, f, l]) => `<a href="${href}" class="${active === k ? 'active' : ''}"><kbd>${f}</kbd>${l}</a>`).join('')}</nav>
     <div class="clock"><span id="updated"></span><span class="utc" id="utc"></span></div>`;
-  const tick = () => { const n = new Date(); document.getElementById('utc').textContent = n.toISOString().slice(11, 19) + ' UTC'; };
+  const tick = () => { const el = document.getElementById('utc'); if (el) el.textContent = new Date().toISOString().slice(11, 19) + ' UTC'; };
   tick(); setInterval(tick, 1000);
   document.addEventListener('keydown', (e) => {
-    if (e.target.matches('input')) return;
-    if (e.key === 'F1') { e.preventDefault(); location.href = 'index.html'; }
-    if (e.key === 'F2') { e.preventDefault(); location.href = 'routes.html'; }
+    if (e.target.matches('input, textarea')) return;
+    const t = { F1: tabs[0][1], F2: tabs[1][1], F3: tabs[2][1], F4: tabs[3][1] }[e.key];
+    if (t) { e.preventDefault(); location.href = t; }
   });
-  document.title = `${code || name} · ${active === 'fleet' ? 'Filo' : 'Rotalar'}`;
+  document.title = `${ME ? 'ME' : code || name} · ${title}`;
   if (d) setUpdated(document.getElementById('updated'), d);
 }
 

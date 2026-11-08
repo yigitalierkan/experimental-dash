@@ -1,0 +1,26 @@
+name: Deploy proxy (Cloudflare Worker)
+
+# One-time setup for the "Kendi verin" tab. Needs repo secrets:
+#   CLOUDFLARE_API_TOKEN  (template "Edit Cloudflare Workers")
+#   CLOUDFLARE_ACCOUNT_ID
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: proxy
+          command: deploy --var ALLOWED_ORIGINS:https://${{ github.repository_owner }}.github.io,http://localhost:8080
+      - name: Next step
+        run: |
+          echo "::notice::Worker URL'sini (https://onair-proxy.<hesabın>.workers.dev) repo değişkeni PROXY_URL olarak ekle, sonra 'Update dashboard' iş akışını çalıştır."

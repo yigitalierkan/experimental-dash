@@ -3,6 +3,8 @@
 OnAir Company verilerini [OnAir public API](https://server1.onair.company/swagger/index.html) üzerinden çekip GitHub Pages'te yayınlanan statik bir dashboard'a dönüştürür.
 
 - **Filo** (`index.html`, `F1`): 7/30/90 gün ve tüm zamanlar için uçak başına gerçekleşen gelir / sabit gider / değişken gider / net K/Z, uçuş/gün (turnover), blok saat, kullanım; günlük filo gelir-gider grafiği; uçak detayı; son 24 saatte uçmamış uçaklar
+- **Kendi verin** (`connect.html`, `F3`): herkes kendi VA/şirket Id'si ve API key'iyle bağlanır, Filo ve Rotalar ekranları yalnızca kendi verisiyle açılır (`?me`). Veri ziyaretçinin tarayıcısında çekilip hesaplanır.
+- **Oyun** (`game.html`, `F4`): A320 FLAP — 8-bit, yön tuşlarıyla oynanan flappy tarzı oyun.
 - **Rotalar** (`routes.html`, `F2`): Regular Routes listesi, harita üzerinde rotalar (great-circle), rotalara atanmış uçaklar ve performansları, filo konumları
 
 ## Nasıl çalışır
@@ -89,3 +91,23 @@ npm test
 Arayüz terminal tarzındadır (siyah zemin, amber başlıklar, monospace). Kısayollar: `F1`/`F2` sayfa, `1–4` periyot, `/` arama, `Esc` detayı kapat.
 
 Harita: Leaflet 1.9.4 (`site/vendor`, BSD-2) + CARTO/OpenStreetMap karoları.
+
+## "Kendi verin" sekmesi ve proxy kurulumu
+
+OnAir API'si tarayıcıdan doğrudan çağrılamaz (CORS ön kontrolü 405 döner, `Access-Control-Allow-Origin` yok). Bu yüzden ziyaretçilerin tarayıcısı istekleri `proxy/worker.js` adlı küçük bir Cloudflare Worker üzerinden yapar:
+
+- yalnızca `GET /api/v1/*` iletilir (iş kabul etme / rota değiştirme gibi POST uç noktaları kapalı),
+- yalnızca bu sitenin origin'i (`https://<kullanıcı>.github.io`) kabul edilir,
+- ziyaretçinin kendi `oa-apikey` başlığı aynen iletilir; hiçbir şey saklanmaz veya loglanmaz.
+
+Kurulum (bir kez):
+1. Ücretsiz bir Cloudflare hesabı aç. **My Profile → API Tokens → Create Token → "Edit Cloudflare Workers"** şablonuyla bir token oluştur. **Account ID**'yi Workers & Pages sayfasının sağ tarafından kopyala.
+2. Repo **Secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+3. **Actions → Deploy proxy (Cloudflare Worker) → Run workflow.** Çıkan adres `https://onair-proxy.<hesabın>.workers.dev` olur.
+4. Repo **Variables**: `PROXY_URL` = bu adres. Sonra **Update dashboard**'u çalıştır.
+
+Ziyaretçi tarafı: key ve Id yalnızca tarayıcıda tutulur ("Bu cihazda hatırla" açıksa `localStorage`, değilse sekme kapanınca silinir). "Bu cihazdan sil" hepsini temizler. Her kullanıcı kendi API kotasını kullanır; ilk yükleme birkaç dakika sürebilir, sonraki yüklemeler önbellekten artımlıdır.
+
+## Oyun
+
+`game.html` — ↑/Space tırman, ↓ dalış, ←/→ gaz, P duraklat, M ses; mobilde ekrana dokun. Rekor tarayıcıda saklanır.

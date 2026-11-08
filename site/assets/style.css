@@ -163,3 +163,4 @@ table.breakdown tr.tot td { background: #1c1400; border-top: 1px solid var(--amb
 footer { color: var(--muted); font-size: 10.5px; padding: 6px 8px 14px; border-top: 1px solid var(--line); margin-top: 6px; }
 .banner { background: #1c1400; border: 1px solid var(--amber-dim); color: var(--yellow); padding: 4px 8px; }
 .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.3); }
+.brand.me { background: var(--cyan); }

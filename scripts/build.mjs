@@ -3,7 +3,7 @@
 //   ONAIR_API_KEY=... ONAIR_COMPANY_ID=... node scripts/build.mjs     # live
 //   node scripts/build.mjs --mock                                     # örnek veriyle
 //   node scripts/build.mjs --raw path/to/raw.json                     # kayıtlı snapshot'tan
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, copyFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OnAirClient, fetchSnapshot, slimSnapshot } from './lib/onair-client.mjs';
@@ -72,6 +72,10 @@ const debug = {
 };
 
 await mkdir(outDir, { recursive: true });
+// Browser-side "Kendi verin" mode reuses the exact same pure modules.
+await mkdir(join(root, 'site', 'lib'), { recursive: true });
+for (const f of ['onair-client.mjs', 'metrics.mjs', 'ledger.mjs']) await copyFile(join(root, 'scripts', 'lib', f), join(root, 'site', 'lib', f));
+await writeFile(join(root, 'site', 'config.json'), JSON.stringify({ proxyUrl: (env.PROXY_URL || '').replace(/\/$/, '') }));
 await writeFile(join(outDir, 'dashboard.json'), JSON.stringify(dashboard));
 await writeFile(join(outDir, 'routes.json'), JSON.stringify(routes));
 await writeFile(join(outDir, 'debug.json'), JSON.stringify(debug, null, 2));

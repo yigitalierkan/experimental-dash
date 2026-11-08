@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kendi verin</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22%23ffa028%22/%3E%3Ctext x=%2250%22 y=%2272%22 font-size=%2266%22 text-anchor=%22middle%22%3E%E2%9C%88%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    .connect { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 6px; }
+    @media (max-width: 1000px) { .connect { grid-template-columns: 1fr; } }
+    form.pb { display: grid; gap: 10px; }
+    .field { display: grid; gap: 3px; }
+    .field label { color: var(--amber); font-size: 10.5px; text-transform: uppercase; }
+    .field input[type=text], .field input[type=password], .field input[type=url] { background: #000; color: var(--yellow); border: 1px solid var(--amber-dim); padding: 5px 8px; font: inherit; }
+    .field input:focus, button:focus-visible { outline: 1px solid var(--yellow); }
+    .field .help { color: var(--muted); font-size: 10.5px; }
+    .btn { background: var(--amber); color: #000; border: 0; padding: 6px 14px; font: inherit; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+    .btn.ghost { background: #141414; color: var(--text-2); border: 1px solid var(--line-2); }
+    .btn:disabled { opacity: .5; cursor: wait; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    #console { background: #000; color: var(--pos); font-size: 11.5px; padding: 8px; height: 420px; overflow: auto; white-space: pre-wrap; margin: 0; }
+    #console .e { color: var(--neg); } #console .w { color: var(--yellow); } #console .i { color: var(--text-2); }
+    .note { border-left: 2px solid var(--amber); padding: 4px 8px; color: var(--text-2); font-size: 11px; background: #0d0d0d; }
+    .note b { color: var(--amber); }
+    #status { color: var(--muted); }
+  </style>
+</head>
+<body>
+<header class="top"></header>
+<main>
+  <div class="connect">
+    <section class="panel">
+      <div class="ph"><h2>Kendi verinle bağlan</h2></div>
+      <form class="pb" id="form" autocomplete="off">
+        <div class="note"><b>Gizlilik:</b> API key'in yalnızca bu tarayıcıda kullanılır; repoya, GitHub'a veya başka bir kullanıcıya gitmez. İstekler sadece okuma yapan bir aktarıcı (proxy) üzerinden OnAir'e iletilir, aktarıcı hiçbir şey saklamaz. Bu modda yalnızca kendi verini görürsün.</div>
+        <div class="field">
+          <label>Tür</label>
+          <span class="seg" id="mode"><button type="button" data-v="va" aria-pressed="true">Virtual Airline</button><button type="button" data-v="company">Şirket</button></span>
+        </div>
+        <div class="field">
+          <label for="id"><span id="idLabel">VA Id</span></label>
+          <input type="text" id="id" required pattern="[0-9a-fA-F-]{36}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false">
+          <span class="help" id="idHelp">OnAir client → Virtual Airline → Settings → VA Id</span>
+        </div>
+        <div class="field">
+          <label for="key">API key</label>
+          <input type="password" id="key" required pattern="[0-9a-fA-F-]{36}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false">
+          <span class="help" id="keyHelp">Aynı ekrandaki API Key (VA'nın kendi anahtarı)</span>
+        </div>
+        <label style="color:var(--text-2);display:flex;gap:6px;align-items:center"><input type="checkbox" id="remember"> Bu cihazda hatırla (key + veri önbelleği tarayıcında saklanır; sonraki yüklemeler çok daha hızlı)</label>
+        <details>
+          <summary class="muted" style="cursor:pointer">Gelişmiş</summary>
+          <div class="field" style="margin-top:6px">
+            <label for="proxy">Proxy URL</label>
+            <input type="url" id="proxy" placeholder="https://onair-proxy.<hesap>.workers.dev" spellcheck="false">
+            <span class="help">Boş bırakılırsa sitenin varsayılan aktarıcısı kullanılır.</span>
+          </div>
+        </details>
+        <div class="actions">
+          <button class="btn" id="go" type="submit">Verimi yükle</button>
+          <a class="btn ghost" id="open" href="index.html?me" hidden>Panoya git →</a>
+          <button class="btn ghost" id="forget" type="button">Bu cihazdan sil</button>
+          <span id="status"></span>
+        </div>
+      </form>
+    </section>
+    <section class="panel">
+      <div class="ph"><h2>Konsol</h2><span class="spacer"></span><span class="meta" id="calls"></span></div>
+      <pre id="console" aria-live="polite"></pre>
+    </section>
+  </div>
+</main>
+<footer>OnAir API dakikada sınırlı sayıda isteğe izin verir; ilk yükleme birkaç dakika sürebilir. "Hatırla" açıksa sonraki yüklemelerde sadece yeni veriler çekilir.</footer>
+<script type="module" src="assets/connect.js"></script>
+</body>
+</html>

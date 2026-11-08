@@ -1,4 +1,4 @@
-import { $, esc, fmt, loadJson, statusPill, renderTable, demoBanner, terminalHeader } from './common.js';
+import { $, esc, fmt, loadJson, statusPill, renderTable, demoBanner, terminalHeader, getData, ME } from './common.js';
 
 const L = window.L;
 const dark = true;
@@ -130,7 +130,7 @@ function select(id, zoom) {
     </dl>
     <div class="h3">Atanmış uçaklar</div>
     ${r.aircraft.length ? `<div class="table-wrap"><table><thead><tr><th>Tescil</th><th>Tip</th><th>Durum</th><th class="n">Uçuş/gün</th><th class="n">Net K/Z (bugüne)</th></tr></thead><tbody>
-      ${r.aircraft.map((a) => `<tr><td><b>${esc(a.registration)}</b></td><td>${esc(a.type || '—')}</td><td>${a.status ? statusPill(a.status) : '—'}</td><td class="n">${fmt.n2(a.flightsPerDay7d)}</td><td class="n"><a class="${a.net < 0 ? 'neg' : 'pos'}" href="index.html#${encodeURIComponent(a.registration)}">${fmt.compact(a.net)}</a></td></tr>`).join('')}
+      ${r.aircraft.map((a) => `<tr><td><b>${esc(a.registration)}</b></td><td>${esc(a.type || '—')}</td><td>${a.status ? statusPill(a.status) : '—'}</td><td class="n">${fmt.n2(a.flightsPerDay7d)}</td><td class="n"><a class="${a.net < 0 ? 'neg' : 'pos'}" href="index.html${ME ? '?me' : ''}#${encodeURIComponent(a.registration)}">${fmt.compact(a.net)}</a></td></tr>`).join('')}
     </tbody></table></div>` : '<p class="hint">Bu rotaya uçak atanmamış.</p>'}`;
   $('#closeDet').addEventListener('click', (e) => { e.preventDefault(); state.sel = null; select(null); });
   const ly = layers.get(r.id);
@@ -161,13 +161,13 @@ function assignTable() {
     { key: 'type', label: 'Tip', get: (x) => x.a.type || '' },
     { key: 'status', label: 'Durum', get: (x) => x.a.status || '', render: (x) => (x.a.status ? statusPill(x.a.status) : '—') },
     { key: 'fpd', label: 'Uçuş/gün (7g)', num: true, get: (x) => x.a.flightsPerDay7d, render: (x) => fmt.n2(x.a.flightsPerDay7d) },
-    { key: 'p', label: 'Net K/Z (bugüne)', num: true, get: (x) => x.a.net, render: (x) => `<a href="index.html#${encodeURIComponent(x.a.registration)}" class="${x.a.net < 0 ? 'neg' : 'pos'}">${fmt.money(x.a.net)}</a>` },
+    { key: 'p', label: 'Net K/Z (bugüne)', num: true, get: (x) => x.a.net, render: (x) => `<a href="index.html${ME ? '?me' : ''}#${encodeURIComponent(x.a.registration)}" class="${x.a.net < 0 ? 'neg' : 'pos'}">${fmt.money(x.a.net)}</a>` },
   ], rows, { sortKey: 'route', sortDir: 'asc', empty: 'Rotalara atanmış uçak bulunamadı.' });
 }
 
 (async () => {
   try {
-    [R, D] = await Promise.all([loadJson('data/routes.json'), loadJson('data/dashboard.json').catch(() => null)]);
+    [R, D] = await Promise.all([getData('routes'), getData('dashboard').catch(() => null)]);
   } catch (e) {
     terminalHeader('routes', null);
     $('main').innerHTML = `<div class="banner">VERİ YÜKLENEMEDİ: ${esc(e.message)}</div>`;
