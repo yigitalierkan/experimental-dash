@@ -65,6 +65,28 @@ export class OnAirClient {
   }
 }
 
+/** Describe a value's structure (keys/types/lengths only — never values) for logs. */
+export function shape(v, depth = 0) {
+  if (Array.isArray(v)) return `array(${v.length})` + (v.length && depth < 2 ? ` of ${shape(v[0], depth + 1)}` : '');
+  if (v && typeof v === 'object') {
+    const ks = Object.keys(v);
+    if (depth >= 2) return `{${ks.length} keys}`;
+    return '{' + ks.slice(0, 25).map((k) => `${k}:${Array.isArray(v[k]) || (v[k] && typeof v[k] === 'object') ? shape(v[k], depth + 1) : typeof v[k]}`).join(', ') + (ks.length > 25 ? ', …' : '') + '}';
+  }
+  return typeof v;
+}
+
+/** Accept either a bare array or an object wrapping one (Items/Flights/Aircraft/...). */
+export function asArray(v) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') {
+    for (const k of ['Items', 'items', 'Data', 'data', 'Results', 'Flights', 'Aircraft', 'Fleet', 'Routes', 'Entries']) if (Array.isArray(v[k])) return v[k];
+    const arr = Object.values(v).find(Array.isArray);
+    if (arr) return arr;
+  }
+  return [];
+}
+
 /** Download everything the dashboard needs. Returns a "raw" snapshot object. */
 export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFlightPages = 60, log = console.log }) {
   const C = `/companies/${companyId}`;
@@ -72,10 +94,20 @@ export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFli
 
   log('→ company');
   raw.company = await client.get(C, {}, { optional: true });
+  log(`  yapı: ${shape(raw.company)}`);
+  if (raw.company?.Name) log(`  şirket: ${raw.company.Name} (${raw.company.AirlineCode ?? ''})`);
 
   log('→ fleet');
-  raw.fleet = (await client.get(`${C}/fleet`)) || [];
+  const fleetRaw = await client.get(`${C}/fleet`);
+  log(`  yapı: ${shape(fleetRaw)}`);
+  raw.fleet = asArray(fleetRaw);
   log(`  ${raw.fleet.length} uçak`);
+  if (!raw.fleet.length) {
+    log('  ! Filo boş. Dashboard yapısı:');
+    log('    ' + shape(await client.get(`${C}/dashboard`, {}, { optional: true })));
+    log('  ! Company ID yerine bir Virtual Airline ID mi girildi? VA olarak deneniyor:');
+    log('    ' + shape(await client.get(`/virtual_airlines/${companyId}`, {}, { optional: true })));
+  }
 
   log('→ flights (sayfalı)');
   const cutoff = Date.now() - flightDays * 86400_000;
@@ -83,7 +115,9 @@ export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFli
   const seen = new Set();
   const limit = 50;
   for (let page = 0; page < maxFlightPages; page++) {
-    const batch = (await client.get(`${C}/flights`, { startIndex: page * limit, limit })) || [];
+    const resp = await client.get(`${C}/flights`, { startIndex: page * limit, limit });
+    if (page === 0) log(`  yapı: ${shape(resp)}`);
+    const batch = asArray(resp);
     let added = 0;
     for (const f of batch) { if (!seen.has(f.Id)) { seen.add(f.Id); flights.push(f); added++; } }
     const oldest = Math.min(...batch.map((f) => Date.parse(f.StartTime || f.EngineOnTime || 0) || Infinity));
@@ -95,8 +129,8 @@ export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFli
   // Some flights (esp. AI / regular-route) may be missing from company feed; top up per aircraft.
   log('→ aircraft flights (uçak başına son 20)');
   for (const ac of raw.fleet) {
-    const list = await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: 0, limit: 20 }, { optional: true });
-    for (const f of list || []) {
+    const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: 0, limit: 20 }, { optional: true }));
+    for (const f of list) {
       if (!seen.has(f.Id)) { seen.add(f.Id); flights.push({ ...f, AircraftId: f.AircraftId || ac.Id }); }
     }
   }
@@ -107,9 +141,12 @@ export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFli
   for (const ac of raw.fleet) {
     raw.economics[ac.Id] = await client.get(`/aircraft/${ac.Id}/economic_details`, {}, { optional: true });
   }
+  const e0 = Object.values(raw.economics).find(Boolean);
+  if (e0) log(`  yapı: ${shape(e0)}`);
 
   log('→ cash_flow');
   raw.cashFlow = await client.get(`${C}/cash_flow`, {}, { optional: true });
+  log(`  yapı: ${shape(raw.cashFlow)}`);
 
   log('→ income_statement (30g)');
   raw.incomeStatement = await client.get(`${C}/income_statement`, {
@@ -119,6 +156,7 @@ export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFli
 
   log('→ regular_routes');
   raw.regularRoutes = await client.get('/regular_routes', {}, { optional: true });
+  log(`  yapı: ${shape(raw.regularRoutes)}`);
 
   // Resolve airports referenced only by ICAO (routes) so they can be drawn on the map.
   raw.airports = {};
