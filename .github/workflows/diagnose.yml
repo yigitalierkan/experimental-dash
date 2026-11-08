@@ -1,0 +1,22 @@
+name: Diagnose API
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/diagnose.mjs
+        env:
+          ONAIR_API_KEY: ${{ secrets.ONAIR_API_KEY }}
+          ONAIR_VA_ID: ${{ secrets.ONAIR_VA_ID }}
+          ONAIR_COMPANY_ID: ${{ secrets.ONAIR_COMPANY_ID }}
