@@ -79,8 +79,14 @@ export function buildLedger(raw, { now = Date.now() } = {}) {
   // aircraft registry: current fleet + any aircraft seen in the ledger (returned leases)
   const info = new Map();
   for (const a of fleet) info.set(a.Id, { id: a.Id, registration: a.Identifier, type: a.AircraftType?.DisplayName ?? null, inFleet: true, lease: a.AircraftLease || null });
-  for (const [id, a] of Object.entries(raw.formerAircraft || {})) if (!info.has(id)) info.set(id, { id, registration: a?.Identifier ?? null, type: a?.AircraftType?.DisplayName ?? null, inFleet: false, lease: null });
+  const fleetRegs = new Set(fleet.map((a) => a.Identifier));
+  for (const [id, a] of Object.entries(raw.formerAircraft || {})) if (!info.has(id)) {
+    const reg = a?.Identifier ?? null;
+    // a returned aircraft may carry a registration that has since been reused by a fleet aircraft
+    info.set(id, { id, registration: reg && fleetRegs.has(reg) ? `${reg} (eski)` : reg, type: a?.AircraftType?.DisplayName ?? null, inFleet: false, lease: null });
+  }
   const regToId = new Map([...info.values()].filter((a) => a.registration).map((a) => [a.registration.toUpperCase(), a.id]));
+  for (const a of fleet) if (a.Identifier) regToId.set(a.Identifier.toUpperCase(), a.Id); // current holder wins
 
   // flight number → aircraft (via regular routes)
   const fnToAc = new Map();

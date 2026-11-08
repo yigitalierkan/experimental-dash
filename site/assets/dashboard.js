@@ -69,7 +69,7 @@ function charts() {
 
 // ---------------------------------------------------------------- tables
 const money = (v) => `<span class="${v < 0 ? 'neg' : ''}">${fmt.money(v)}</span>`;
-const regCell = (a) => `<span class="reg">${esc(a.registration)}</span>${a.inFleet === false ? ' <span class="pill">iade</span>' : ''}${a.nickname ? ` <span class="muted">${esc(a.nickname)}</span>` : ''}`;
+const regCell = (a) => `<span class="reg" data-id="${esc(a.id)}">${esc(a.registration)}</span>${a.inFleet === false ? ' <span class="pill">iade</span>' : ''}${a.nickname ? ` <span class="muted">${esc(a.nickname)}</span>` : ''}`;
 const loc = (a) => (a.location?.icao ? `${esc(a.location.icao)} <span class="muted">${esc(a.location.city || a.location.name || '')}</span>` : '—');
 
 function pnlTable() {
@@ -98,10 +98,10 @@ function pnlTable() {
 function wireRowClicks(el) {
   // renderTable re-renders on sort; re-wire each time
   const rows = [...el.querySelectorAll('tbody tr')];
-  const regs = rows.map((tr) => tr.querySelector('.reg')?.textContent);
+  const ids = rows.map((tr) => tr.querySelector('.reg')?.dataset.id);
   rows.forEach((tr, i) => {
     tr.style.cursor = 'pointer';
-    const a = LG.aircraft.find((x) => x.registration === regs[i]);
+    const a = LG.aircraft.find((x) => x.id === ids[i]);
     if (a && a.id === state.sel) tr.style.background = 'var(--surface-0)';
     tr.addEventListener('click', () => a && select(a.id));
   });
@@ -280,7 +280,7 @@ function seg(id, fn) {
   $('#showFormer').addEventListener('change', (e) => { state.former = e.target.checked; render(); });
   $('#q').addEventListener('input', (e) => { state.q = e.target.value.trim().toLowerCase(); render(); });
   const fromHash = decodeURIComponent(location.hash.slice(1));
-  const pre = LG.aircraft.find((a) => a.registration === fromHash);
+  const pre = LG.aircraft.find((a) => a.registration === fromHash && a.inFleet) || LG.aircraft.find((a) => a.registration === fromHash);
   if (pre) state.sel = pre.id;
   render();
 })();
