@@ -70,3 +70,11 @@ await writeFile(join(outDir, 'dashboard.json'), JSON.stringify(dashboard));
 await writeFile(join(outDir, 'routes.json'), JSON.stringify(routes));
 await writeFile(join(outDir, 'debug.json'), JSON.stringify(debug, null, 2));
 console.log(`✓ ${dashboard.aircraft.length} uçak, ${dashboard.totals.idle24h} tanesi ${settings.idleHours}s+ boşta, ${routes.count} rota → site/data/`);
+
+// Run summary (GitHub Actions log + job summary) — computed metrics only
+const rows = dashboard.aircraft.map((a) => `| ${a.registration} | ${a.type} | ${a.status} | ${a.turnover.d7.flights} | ${a.turnover.d7.utilisationPct ?? '—'}% | ${a.hoursSinceLastFlight ?? '—'} | ${a.economics ? a.economics.revenuePerHour : '—'} | ${a.projection30d?.profit ?? '—'} | ${a.cashFlow30d?.net ?? '—'} |`);
+const summary = [`### ${dashboard.company?.name ?? 'OnAir'} — ${dashboard.aircraft.length} uçak, ${raw.flights?.length ?? 0} uçuş, ${routes.count} rota`, '',
+  '| Tescil | Tip | Durum | Uçuş 7g | Kullanım 7g | Son uçuştan beri (s) | Gelir/saat | Kâr 30g | Kasa 30g |', '|---|---|---|---|---|---|---|---|---|', ...rows, '',
+  `Kasa eşleşmesi: ${dashboard.cashMatch.matched}/${dashboard.cashMatch.total} satır`].join('\n');
+console.log(summary);
+if (env.GITHUB_STEP_SUMMARY) await writeFile(env.GITHUB_STEP_SUMMARY, summary + '\n', { flag: 'a' });

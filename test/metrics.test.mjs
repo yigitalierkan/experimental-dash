@@ -57,7 +57,7 @@ test('end-to-end on mock snapshot', () => {
   assert.ok(d.aircraft.some((a) => a.idle24h));
   assert.ok(!d.aircraft.find((a) => a.status === 'InFlight').idle24h);
   const r = buildRoutes(raw, d);
-  assert.equal(r.count, 5);
+  assert.equal(r.count, 6);
   for (const route of r.routes) {
     assert.ok(route.stops.length >= 2, route.name);
     assert.ok(route.stops.every((s) => s.lat != null));
@@ -79,4 +79,20 @@ test('routes: airports nested in an assigned aircraft are not stops', () => {
   const r = buildRoutes({ fleet: [ac], regularRoutes: [{ Id: 'r', DepartureAirport: ap('AAAA', 1, 1), ArrivalAirport: ap('BBBB', 2, 2), Aircraft: ac }] }, { aircraft: [] });
   assert.deepEqual(r.routes[0].stops.map((s) => s.icao), ['AAAA', 'BBBB']);
   assert.equal(r.routes[0].aircraft[0].registration, 'TC-X');
+});
+
+test('routes: live regular_routes shape', () => {
+  const ap = (ICAO, Latitude, Longitude) => ({ ICAO, Name: ICAO, Latitude, Longitude });
+  const ac = { Id: 'a1', Identifier: 'TC-TRS', AircraftTypeId: 't', AircraftType: { DisplayName: 'A320' }, AircraftStatus: 0 };
+  const raw = { fleet: [ac], airports: { LTFM: ap('LTFM', 41.27, 28.75), EDDF: ap('EDDF', 50.03, 8.57), LTBA: ap('LTBA', 40.97, 28.81) },
+    regularRoutes: [{ Id: 'r1', FlightNumber: 101, Active: true, RouteSetName: 'IST-FRA', DepartureICAO: 'LTFM', ArrivalICAO: 'EDDF', AlternateICAO: 'LTBA',
+      Days: [1, 3, 5], DepartureTimeUTC: 9.5, ArrivalTimeUTC: 12, FlyInSim: false, AircraftId: 'a1', AircraftIdentifier: 'TC-TRS', Crew: [{}, {}], Flights: [{}, {}, {}] }] };
+  const r = buildRoutes(raw, { aircraft: [] }).routes[0];
+  assert.deepEqual(r.stops.map((s) => s.icao), ['LTFM', 'EDDF']);
+  assert.equal(r.alternate.icao, 'LTBA');
+  assert.equal(r.flightNumber, '101');
+  assert.equal(r.aircraft[0].registration, 'TC-TRS');
+  assert.equal(r.schedule.dep, '09:30Z');
+  assert.equal(r.schedule.days, 'Pzt, Çar, Cum');
+  assert.ok(r.distanceNm > 300);
 });

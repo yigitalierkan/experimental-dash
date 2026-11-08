@@ -41,7 +41,7 @@ function visible() {
   return R.routes.filter((r) => {
     if (state.onlyAssigned && !r.aircraft.length) return false;
     if (!state.q) return true;
-    const s = `${r.name} ${r.flightNumber || ''} ${r.stops.map((x) => `${x.icao} ${x.city || ''} ${x.name || ''}`).join(' ')} ${r.aircraft.map((a) => a.registration).join(' ')}`.toLowerCase();
+    const s = `${r.name} ${r.set || ''} ${r.flightNumber || ''} ${r.stops.map((x) => `${x.icao} ${x.city || ''} ${x.name || ''}`).join(' ')} ${r.aircraft.map((a) => a.registration).join(' ')}`.toLowerCase();
     return s.includes(state.q);
   });
 }
@@ -95,8 +95,8 @@ function renderList(list) {
     const c = layers.get(r.id)?.color || 'var(--text-muted)';
     return `<div class="route-item ${state.sel === r.id ? 'sel' : ''}" data-id="${esc(r.id)}">
       <div class="t"><span><i style="display:inline-block;width:10px;height:3px;background:${c};vertical-align:middle;margin-right:6px;border-radius:2px"></i>${esc(r.name)}</span>
-      <span class="muted">${esc(r.flightNumber || '')}</span></div>
-      <div class="s">${esc(r.stops.map((s) => s.icao).join(' → ') || '—')}${r.distanceNm ? ` · ${fmt.n0(r.distanceNm)} nm` : ''}</div>
+      <span class="muted">${r.flightNumber ? '#' + esc(r.flightNumber) : ''}</span></div>
+      <div class="s">${r.set ? `${esc(r.set)} · ` : ''}${r.distanceNm ? `${fmt.n0(r.distanceNm)} nm` : ''}${r.schedule?.dep ? ` · ${esc(r.schedule.dep)}–${esc(r.schedule.arr || '')}` : ''}${r.schedule?.days ? ` · ${esc(r.schedule.days)}` : ''}${r.active === false ? ' · <b>Pasif</b>' : ''}</div>
       <div class="ac">${r.aircraft.length ? r.aircraft.map((a) => `<span class="pill">${esc(a.registration)}</span>`).join('') : '<span class="muted" style="font-size:12px">Uçak atanmamış</span>'}</div>
     </div>`;
   }).join('') : '<div class="empty">Rota bulunamadı. (regular_routes boş dönmüş olabilir — data/debug.json dosyasına bakın.)</div>';
@@ -154,7 +154,8 @@ function assignTable() {
   const rows = R.routes.flatMap((r) => r.aircraft.map((a) => ({ r, a })));
   renderTable($('#assignTable'), [
     { key: 'route', label: 'Rota', get: (x) => x.r.name, render: (x) => `<b>${esc(x.r.name)}</b> <span class="muted">${esc(x.r.flightNumber || '')}</span>` },
-    { key: 'stops', label: 'Güzergâh', get: (x) => x.r.stops.map((s) => s.icao).join(' → ') },
+    { key: 'set', label: 'Rota seti', get: (x) => x.r.set || '' },
+    { key: 'sched', label: 'Sefer (UTC)', get: (x) => x.r.schedule?.dep || '', render: (x) => (x.r.schedule?.dep ? `${esc(x.r.schedule.dep)}–${esc(x.r.schedule.arr || '')} <span class="muted">${esc(x.r.schedule.days || '')}</span>` : '—') },
     { key: 'nm', label: 'Mesafe (nm)', num: true, get: (x) => x.r.distanceNm, render: (x) => fmt.n0(x.r.distanceNm) },
     { key: 'reg', label: 'Tescil', get: (x) => x.a.registration, render: (x) => `<b>${esc(x.a.registration)}</b>` },
     { key: 'type', label: 'Tip', get: (x) => x.a.type || '' },

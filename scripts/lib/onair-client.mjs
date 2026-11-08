@@ -59,14 +59,16 @@ export class OnAirClient {
         if (optional) { this.log(`  (opsiyonel) ${msg}`); return null; }
         throw new Error(msg);
       }
-      if (body && typeof body === 'object' && 'Content' in body) {
-        if (body.Error && body.Content == null) {
-          if (optional) { this.log(`  (opsiyonel) ${url.pathname}: ${body.Error}`); return null; }
-          throw new Error(`${url.pathname}: ${body.Error}`);
+      // unwrap { Content } — some endpoints (economic_details) nest it twice
+      let out = body;
+      while (out && typeof out === 'object' && !Array.isArray(out) && 'Content' in out) {
+        if (out.Error && out.Content == null) {
+          if (optional) { this.log(`  (opsiyonel) ${url.pathname}: ${out.Error}`); return null; }
+          throw new Error(`${url.pathname}: ${out.Error}`);
         }
-        return body.Content;
+        out = out.Content;
       }
-      return body;
+      return out;
     }
   }
 }
@@ -154,11 +156,16 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
   log(`  ${flights.length} uçuş`);
 
   // Some flights (esp. AI / regular-route) may be missing from company feed; top up per aircraft.
-  log('→ aircraft flights (uçak başına son 20)');
+  log(`→ aircraft flights (uçak başına, son ${flightDays} gün)`);
   for (const ac of raw.fleet) {
-    const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: 0, limit: 20 }, { optional: true }));
-    for (const f of list) {
-      if (!seen.has(f.Id)) { seen.add(f.Id); flights.push({ ...f, AircraftId: f.AircraftId || ac.Id }); }
+    for (let page = 0; page < 12; page++) {
+      const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: page * limit, limit }, { optional: true }));
+      let added = 0;
+      for (const f of list) {
+        if (!seen.has(f.Id)) { seen.add(f.Id); flights.push({ ...f, AircraftId: f.AircraftId || ac.Id }); added++; }
+      }
+      const oldest = Math.min(...list.map((f) => Date.parse((f.StartTime || '') + 'Z') || Infinity));
+      if (list.length < limit || oldest < cutoff || (added === 0 && page > 0)) break;
     }
   }
   log(`  toplam ${flights.length} uçuş`);
@@ -184,6 +191,8 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
   log('→ regular_routes');
   raw.regularRoutes = await client.get('/regular_routes', {}, { optional: true });
   log(`  yapı: ${shape(raw.regularRoutes)}`);
+  const r0 = asArray(raw.regularRoutes)[0];
+  if (r0) for (const k of Object.keys(r0)) if (Array.isArray(r0[k]) && r0[k].length) log(`  ${k}[0]: ${shape(r0[k][0])}`);
 
   // Resolve airports referenced only by ICAO (routes) so they can be drawn on the map.
   raw.airports = {};

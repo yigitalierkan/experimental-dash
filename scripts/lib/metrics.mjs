@@ -239,6 +239,9 @@ export function buildRoutes(raw, dashboard) {
   for (const a of raw.fleet || []) if (a.CurrentAirport?.ICAO) airportCache[a.CurrentAirport.ICAO] ||= a.CurrentAirport;
 
   const routes = routeList(raw.regularRoutes).map((r, i) => {
+    if (r && typeof r.DepartureICAO === 'string' && typeof r.ArrivalICAO === 'string') {
+      return knownRoute(r, i, { airportCache, fleetById, dashById });
+    }
     const ctx = { airports: [], aircraft: new Map(), aircraftIds: new Set() };
     scanRoute(r, ctx);
     // ordered unique stops; prefer departure-ish keys first, arrival-ish last
@@ -275,6 +278,64 @@ export function buildRoutes(raw, dashboard) {
     };
   });
   return { generatedAt: dashboard?.generatedAt, count: routes.length, routes };
+}
+
+const DAY_NAMES = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+/** OnAir UTC time-of-day: hours (e.g. 13.5) or minutes since midnight (e.g. 810). */
+export function fmtTimeOfDay(v) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return typeof v === 'string' ? v : null;
+  const mins = v > 24 ? Math.round(v) : Math.round(v * 60);
+  return `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}Z`;
+}
+function fmtDays(days) {
+  if (!Array.isArray(days)) return null;
+  return days.map((d) => (typeof d === 'number' && d >= 0 && d <= 6 ? DAY_NAMES[d] : typeof d === 'object' ? (d?.Name ?? d?.Day ?? JSON.stringify(d)) : String(d))).join(', ');
+}
+
+/** /regular_routes shape observed live: DepartureICAO, ArrivalICAO, AlternateICAO, AircraftId, AircraftIdentifier, Days, Crew, Flights … */
+function knownRoute(r, i, { airportCache, fleetById, dashById }) {
+  const stop = (icao) => (icao ? airportLite(airportCache[icao]) || { icao, lat: null, lon: null } : null);
+  const stops = [stop(r.DepartureICAO), stop(r.ArrivalICAO)].filter(Boolean);
+  const alternate = r.AlternateICAO ? stop(r.AlternateICAO) : null;
+  const ac = (r.AircraftId && fleetById.get(r.AircraftId)) || [...fleetById.values()].find((a) => a.Identifier && a.Identifier === r.AircraftIdentifier);
+  const d = ac ? dashById.get(ac.Id) : null;
+  const aircraft = ac || r.AircraftIdentifier ? [{
+    id: ac?.Id ?? r.AircraftId ?? null,
+    registration: ac?.Identifier ?? r.AircraftIdentifier,
+    type: ac?.AircraftType?.DisplayName ?? d?.type ?? null,
+    status: d?.status ?? (ac ? AIRCRAFT_STATUS[ac.AircraftStatus] : null) ?? null,
+    flightsPerDay7d: d?.turnover.d7.flightsPerDay ?? null,
+    profit30d: d?.projection30d?.profit ?? null,
+  }] : [];
+  const dist = stops.length === 2 ? gcNm(stops[0], stops[1]) : NaN;
+  const days = fmtDays(r.Days);
+  const fn = r.FlightNumber != null ? String(r.FlightNumber) : null;
+  return {
+    id: r.Id || `route-${i}`,
+    name: `${r.DepartureICAO} → ${r.ArrivalICAO}`,
+    set: r.RouteSetName || null,
+    flightNumber: fn,
+    status: r.Active === false ? 'Pasif' : 'Aktif',
+    active: r.Active !== false,
+    stops,
+    alternate,
+    distanceNm: Number.isFinite(dist) ? Math.round(dist) : null,
+    aircraft,
+    schedule: { days, daysPerWeek: Array.isArray(r.Days) ? r.Days.length : null, dep: fmtTimeOfDay(r.DepartureTimeUTC), arr: fmtTimeOfDay(r.ArrivalTimeUTC) },
+    crew: Array.isArray(r.Crew) ? r.Crew.length : null,
+    scheduledFlights: Array.isArray(r.Flights) ? r.Flights.length : null,
+    flyInSim: r.FlyInSim ?? null,
+    extra: {
+      'Rota seti': r.RouteSetName || '—',
+      'Günler': days || '—',
+      'Kalkış (UTC)': fmtTimeOfDay(r.DepartureTimeUTC) ?? '—',
+      'Varış (UTC)': fmtTimeOfDay(r.ArrivalTimeUTC) ?? '—',
+      'Yedek meydan': r.AlternateICAO || '—',
+      'Ekip': Array.isArray(r.Crew) ? `${r.Crew.length} kişi` : '—',
+      'Planlı uçuş': Array.isArray(r.Flights) ? r.Flights.length : '—',
+      'Simde uçulur': r.FlyInSim ? 'Evet' : 'Hayır',
+    },
+  };
 }
 
 /** Keep a few readable scalar fields from the route for the detail panel. */

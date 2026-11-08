@@ -65,22 +65,21 @@ export function mockSnapshot(now = Date.now()) {
       k++;
     }
   });
-  const route = (name, fn, stops, acIdx) => ({
-    Id: uuid(), Name: name, FlightNumber: fn, Status: 1, DepartureAirport: stops[0], ArrivalAirport: stops.at(-1),
-    Legs: stops.slice(0, -1).map((s, j) => ({ DepartureICAO: s.ICAO, ArrivalICAO: stops[j + 1].ICAO })),
-    AircraftId: fleet[acIdx].Id, Aircraft: fleet[acIdx], WeeklyFrequency: 7, TicketPrice: 120,
+  const route = (set, fn, a, b, acIdx, dep) => ({
+    Id: uuid(), FlightNumber: fn, Active: true, RouteSetName: set, DepartureICAO: a.ICAO, ArrivalICAO: b.ICAO, AlternateICAO: AIRPORTS[3].ICAO,
+    Days: [1, 3, 5], DepartureTimeUTC: dep, ArrivalTimeUTC: dep + 2, FlyInSim: false, AircraftId: fleet[acIdx].Id, AircraftIdentifier: fleet[acIdx].Identifier,
+    Crew: [{}, {}], Flights: [{}, {}, {}],
   });
   const regularRoutes = [
-    route('Istanbul – Antalya', 'OA101', [AIRPORTS[0], AIRPORTS[1]], 0),
-    route('Istanbul – Frankfurt', 'OA201', [AIRPORTS[0], AIRPORTS[4]], 1),
-    route('Izmir – London', 'OA305', [AIRPORTS[2], AIRPORTS[5]], 5),
-    route('Ankara – Dubai', 'OA410', [AIRPORTS[3], AIRPORTS[7]], 8),
-    route('Antalya – Paris', 'OA512', [AIRPORTS[1], AIRPORTS[6]], 2),
+    route('IST-AYT', 101, AIRPORTS[0], AIRPORTS[1], 0, 6), route('IST-AYT', 102, AIRPORTS[1], AIRPORTS[0], 0, 9),
+    route('IST-FRA', 201, AIRPORTS[0], AIRPORTS[4], 1, 7.5), route('ADB-LHR', 305, AIRPORTS[2], AIRPORTS[5], 5, 10),
+    route('ESB-DXB', 410, AIRPORTS[3], AIRPORTS[7], 8, 13.25), route('AYT-CDG', 512, AIRPORTS[1], AIRPORTS[6], 2, 15),
   ];
+  const airports = Object.fromEntries(AIRPORTS.map((a) => [a.ICAO, a]));
   const cashFlow = { CompanyCurrentCash: 12_450_000, Entries: flights.filter((_, j) => j % 4 === 0).map((f) => {
     const ac = fleet.find((a) => a.Id === f.AircraftId);
     return { Id: uuid(), CreationDate: f.EndTime || f.StartTime, Amount: Math.round((rnd() - 0.25) * 40000), Description: `Job pay - ${ac.Identifier} ${f.DepartureAirport.ICAO}` };
   }) };
   return { fetchedAt: new Date(now).toISOString(), companyId, company: { Name: 'Demo Airways', AirlineCode: 'OAX', Level: 12, Reputation: 0.87 },
-    fleet, flights, economics, cashFlow, regularRoutes, airports: {}, apiCalls: 0 };
+    fleet, flights, economics, cashFlow, regularRoutes, airports, apiCalls: 0 };
 }
