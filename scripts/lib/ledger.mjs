@@ -140,7 +140,9 @@ export function buildLedger(raw, { now = Date.now() } = {}) {
     if (!acId && (cat === 'leaseRefund' || cat === 'lease')) {
       const m = String(e.Description).toUpperCase().match(/\(([A-Z0-9-]{3,10})\)|FOR AIRCRAFT .*\(([A-Z0-9-]+)\)|THE ([A-Z0-9-]{3,10}) LEASE/);
       const reg = m && (m[1] || m[2] || m[3]);
-      if (reg && regToId.has(reg)) acId = regToId.get(reg);
+      // a refund belongs to the returned aircraft that held the registration, not to its current holder
+      if (reg && cat === 'leaseRefund' && regToId.has(`${reg} (ESKI)`)) acId = regToId.get(`${reg} (ESKI)`);
+      else if (reg && regToId.has(reg)) acId = regToId.get(reg);
     }
     if (!acId && (cat === 'lease' || cat === 'leaseRefund')) {
       // lease line for an aircraft we can't resolve (e.g. returned) → keep it on its own book
