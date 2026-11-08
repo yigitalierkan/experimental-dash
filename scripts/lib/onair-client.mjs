@@ -174,17 +174,28 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
   const limit = 50;
   log(`→ flights (${new Date(cutoff).toISOString().slice(0, 10)} sonrası, önbellekte ${byId.size})`);
   let skipped = 0;
+  // pass 1: newest page for every aircraft (keeps "last flight / idle" correct even under rate limits)
+  const deeper = [];
   for (const ac of raw.fleet) {
-    for (let page = 0; page < 40; page++) {
+    if (left() < 45_000) { skipped++; continue; }
+    const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: 0, limit }, { optional: true }));
+    let known = 0;
+    for (const f of list) { if (byId.get(f.Id)?.EngineOffTime) known++; byId.set(f.Id, { ...f, AircraftId: f.AircraftId || ac.Id }); }
+    const oldest = Math.min(...list.map((f) => Date.parse((f.StartTime || '') + 'Z') || Infinity));
+    if (list.length === limit && oldest >= cutoff && known === 0) deeper.push(ac);
+  }
+  // pass 2: older pages only where the cache has a gap
+  for (const ac of deeper) {
+    for (let page = 1; page < 40; page++) {
       if (left() < 45_000) { skipped++; break; }
       const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: page * limit, limit }, { optional: true }));
       let known = 0;
-      for (const f of list) { if (byId.has(f.Id) && byId.get(f.Id).EngineOffTime) known++; byId.set(f.Id, { ...f, AircraftId: f.AircraftId || ac.Id }); }
+      for (const f of list) { if (byId.get(f.Id)?.EngineOffTime) known++; byId.set(f.Id, { ...f, AircraftId: f.AircraftId || ac.Id }); }
       const oldest = Math.min(...list.map((f) => Date.parse((f.StartTime || '') + 'Z') || Infinity));
-      if (list.length < limit || oldest < cutoff || known > 0) break; // reached cached history
+      if (list.length < limit || oldest < cutoff || known > 0) break;
     }
   }
-  if (skipped) log(`  ! zaman bütçesi: ${skipped} uçağın uçuşları önbellekten`);
+  if (skipped) log(`  ! zaman bütçesi: ${skipped} uçakta eski uçuş sayfaları sonraki çalıştırmaya kaldı`);
   raw.flights = [...byId.values()].filter((f) => (Date.parse((f.StartTime || '') + 'Z') || 0) >= cutoff - 7 * 86400_000);
   log(`  ${raw.flights.length} uçuş (${Math.round((Date.now() - t0) / 1000)}s, ${client.calls} istek)`);
 
