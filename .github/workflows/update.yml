@@ -31,18 +31,37 @@ jobs:
         run: npm test
 
       - name: Fetch OnAir data & compute metrics
+        id: fetch
+        continue-on-error: true
+        timeout-minutes: 6
         env:
           ONAIR_API_KEY: ${{ secrets.ONAIR_API_KEY }}
           ONAIR_VA_ID: ${{ secrets.ONAIR_VA_ID }}
           ONAIR_COMPANY_ID: ${{ secrets.ONAIR_COMPANY_ID }}
           IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
           FLIGHT_DAYS: ${{ vars.FLIGHT_DAYS || '30' }}
+          FETCH_BUDGET_MS: "240000"
         run: |
           if [ -z "$ONAIR_API_KEY" ] || { [ -z "$ONAIR_VA_ID" ] && [ -z "$ONAIR_COMPANY_ID" ]; }; then
             echo "::warning::ONAIR_API_KEY / ONAIR_VA_ID secret'ları yok — demo veriyle yayınlanıyor."
             node scripts/build.mjs --mock
           else
             node scripts/build.mjs
+          fi
+
+      - name: Fallback — rebuild from last published snapshot
+        if: steps.fetch.outcome != 'success'
+        env:
+          IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
+        run: |
+          echo "::warning::Canlı veri alınamadı; son yayınlanan snapshot ile yeniden derleniyor."
+          url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/snapshot.json.gz"
+          if curl -fsSL "$url" -o /tmp/snapshot.json.gz; then
+            node scripts/build.mjs --raw /tmp/snapshot.json.gz
+            cp /tmp/snapshot.json.gz site/data/snapshot.json.gz
+          else
+            echo "::warning::Önceki snapshot yok — demo veriyle yayınlanıyor."
+            node scripts/build.mjs --mock
           fi
 
       - uses: actions/configure-pages@v5

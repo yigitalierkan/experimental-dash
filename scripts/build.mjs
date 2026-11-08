@@ -6,7 +6,8 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { OnAirClient, fetchSnapshot } from './lib/onair-client.mjs';
+import { OnAirClient, fetchSnapshot, slimSnapshot } from './lib/onair-client.mjs';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { buildDashboard, buildRoutes } from './lib/metrics.mjs';
 import { buildLedger } from './lib/ledger.mjs';
 import { mockSnapshot } from './lib/mock.mjs';
@@ -28,7 +29,9 @@ if (flag('--mock')) {
   console.log('MOCK veri üretiliyor');
   raw = mockSnapshot();
 } else if (opt('--raw')) {
-  raw = JSON.parse(await readFile(opt('--raw'), 'utf8'));
+  const buf = await readFile(opt('--raw'));
+  raw = JSON.parse((opt('--raw').endsWith('.gz') ? gunzipSync(buf) : buf).toString('utf8'));
+  console.log(`Kayıtlı snapshot kullanılıyor (${raw.fetchedAt})`);
 } else {
   const apiKey = env.ONAIR_API_KEY?.trim();
   const vaId = env.ONAIR_VA_ID?.trim();
@@ -44,7 +47,7 @@ if (flag('--mock')) {
   if (!UUID.test(companyId)) { console.error('VA/Company ID UUID formatında değil (ör. 1a2b3c4d-....). Tırnak/boşluk/fazla karakter olmadığından emin ol.'); process.exit(1); }
   if (apiKey === companyId) { console.error('ONAIR_API_KEY ile ID aynı — ikisi farklı değerler olmalı.'); process.exit(1); }
   const client = new OnAirClient({ apiKey, baseUrl: env.ONAIR_BASE_URL || undefined });
-  raw = await fetchSnapshot({ client, companyId, vaMode, flightDays: settings.flightDays });
+  raw = slimSnapshot(await fetchSnapshot({ client, companyId, vaMode, flightDays: settings.flightDays, budgetMs: Number(env.FETCH_BUDGET_MS || 240_000) }));
   console.log(`API çağrısı: ${raw.apiCalls}`);
   if (flag('--save-raw')) await writeFile(join(root, 'raw-snapshot.json'), JSON.stringify(raw));
 }
@@ -53,6 +56,7 @@ const ledger = buildLedger(raw);
 const dashboard = buildDashboard(raw, { idleHours: settings.idleHours, ledger });
 const routes = buildRoutes(raw, dashboard);
 if (flag('--mock')) { dashboard.demo = true; routes.demo = true; }
+if (opt('--raw')) { dashboard.stale = true; routes.stale = true; }
 
 // Shape hints for troubleshooting (keys only, no secrets).
 const debug = {
@@ -65,6 +69,7 @@ await mkdir(outDir, { recursive: true });
 await writeFile(join(outDir, 'dashboard.json'), JSON.stringify(dashboard));
 await writeFile(join(outDir, 'routes.json'), JSON.stringify(routes));
 await writeFile(join(outDir, 'debug.json'), JSON.stringify(debug, null, 2));
+if (!flag('--mock')) await writeFile(join(outDir, 'snapshot.json.gz'), gzipSync(JSON.stringify(raw))); // fallback for future runs
 console.log(`✓ ${dashboard.aircraft.length} uçak, ${dashboard.totals.idle24h} tanesi ${settings.idleHours}s+ boşta, ${routes.count} rota, ${ledger.aircraft.length} uçak defteri → site/data/`);
 
 // Run summary (GitHub Actions log + job summary) — computed metrics only

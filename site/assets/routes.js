@@ -176,9 +176,16 @@ function assignTable() {
   terminalHeader('routes', D || R);
   demoBanner(D || R);
   map = L.map('map', { worldCopyJump: true, zoomSnap: 0.5 }).setView([40, 20], 3);
-  L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`, {
-    maxZoom: 18, subdomains: 'abcd', attribution: '&copy; OpenStreetMap &copy; CARTO',
+  // Keyless basemap: Esri World Dark Gray (no API key); fall back to OpenStreetMap if it fails to load.
+  const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 16, attribution: 'Tiles &copy; Esri — Esri, HERE, Garmin, &copy; OpenStreetMap',
   }).addTo(map);
+  let errs = 0;
+  esri.on('tileerror', () => {
+    if (++errs !== 4) return;
+    map.removeLayer(esri);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap', className: 'osm-dark' }).addTo(map);
+  });
   routeLayer = L.featureGroup().addTo(map);
   fleetLayer = L.layerGroup().addTo(map);
   drawRoutes(); drawFleet(); assignTable();

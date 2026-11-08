@@ -286,6 +286,7 @@ function seg(id, fn) {
   }
   NOW = Date.parse(D.generatedAt);
   LG = D.ledger || { aircraft: [], categories: {} };
+  for (const a of LG.aircraft) { a.daily ||= []; a.tx ||= []; a.cats ||= {}; }
   CAT = LG.categories;
   for (const f of D.flights || []) {
     if (!flightsByAc.has(f.aircraftId)) flightsByAc.set(f.aircraftId, []);

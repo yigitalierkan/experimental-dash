@@ -15,7 +15,7 @@ export class OnAirClient {
     this.calls = 0;
   }
 
-  async get(path, query = {}, { retries = 4, optional = false } = {}) {
+  async get(path, query = {}, { retries = 2, optional = false } = {}) {
     const url = new URL(this.baseUrl + path);
     for (const [k, v] of Object.entries(query)) {
       if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
@@ -33,7 +33,7 @@ export class OnAirClient {
             Accept: 'application/json',
             'User-Agent': 'onair-dashboard (github actions)',
           },
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(25_000),
         });
       } catch (e) {
         if (attempt < retries) { await sleep(1000 * 2 ** attempt); continue; }
@@ -96,7 +96,9 @@ export function asArray(v) {
 }
 
 /** Download everything the dashboard needs. Returns a "raw" snapshot object. */
-export async function fetchSnapshot({ client, companyId, vaMode = false, flightDays = 30, maxFlightPages = 60, log = console.log }) {
+export async function fetchSnapshot({ client, companyId, vaMode = false, flightDays = 30, maxFlightPages = 60, budgetMs = 240_000, log = console.log }) {
+  const t0 = Date.now();
+  const overBudget = () => Date.now() - t0 > budgetMs;
   const C = `/companies/${companyId}`;
   const raw = { fetchedAt: new Date().toISOString(), companyId, mode: vaMode ? 'va' : 'company' };
 
@@ -144,7 +146,7 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
   const flights = [];
   const seen = new Set();
   const limit = 50;
-  for (let page = 0; page < maxFlightPages; page++) {
+  for (let page = 0; page < maxFlightPages && !overBudget(); page++) {
     const resp = await client.get(`${C}/flights`, { startIndex: page * limit, limit });
     if (page === 0) log(`  yapı: ${shape(resp)}`);
     const batch = asArray(resp);
@@ -159,6 +161,7 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
   // Some flights (esp. AI / regular-route) may be missing from company feed; top up per aircraft.
   log('→ aircraft flights (uçak başına)');
   for (const ac of raw.fleet) {
+    if (overBudget()) { log(`  ! zaman bütçesi doldu, kalan uçakların ek uçuş sayfaları atlandı`); break; }
     for (let page = 0; page < 40; page++) {
       const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: page * limit, limit }, { optional: true }));
       let added = 0;
@@ -169,7 +172,7 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
       if (list.length < limit || oldest < cutoff || (added === 0 && page > 0)) break;
     }
   }
-  log(`  toplam ${flights.length} uçuş`);
+  log(`  toplam ${flights.length} uçuş (${Math.round((Date.now() - t0) / 1000)}s)`);
 
   log('→ cash_flow');
   raw.cashFlow = await client.get(`${C}/cash_flow`, {}, { optional: true });
@@ -216,4 +219,33 @@ export function collectBareIcaos(node, out = new Set()) {
     else if (v && typeof v === 'object') collectBareIcaos(v, out);
   }
   return out;
+}
+
+/** Keep only what the dashboard needs so the snapshot can be stored and reused as a fallback. */
+export function slimSnapshot(raw) {
+  const ap = (a) => (a ? { ICAO: a.ICAO, Name: a.Name, City: a.City, CountryCode: a.CountryCode, Latitude: a.Latitude, Longitude: a.Longitude } : null);
+  const strip = (o, drop) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !drop.includes(k)));
+  return {
+    ...raw,
+    company: strip(raw.company, ['CompanySkillPoints', 'DiscordWebhooks']),
+    va: undefined,
+    members: (raw.members || []).length,
+    fleet: (raw.fleet || []).map((a) => ({
+      ...strip(a, ['RentCompany', 'Failures', 'Engines']),
+      AircraftType: a.AircraftType ? { DisplayName: a.AircraftType.DisplayName, TypeName: a.AircraftType.TypeName } : null,
+      CurrentAirport: ap(a.CurrentAirport),
+      AircraftLease: a.AircraftLease ? strip(a.AircraftLease, ['Company']) : null,
+    })),
+    flights: (raw.flights || []).map((f) => ({
+      Id: f.Id, AircraftId: f.AircraftId, StartTime: f.StartTime, EndTime: f.EndTime, EngineOnTime: f.EngineOnTime, EngineOffTime: f.EngineOffTime,
+      AirborneTime: f.AirborneTime, LandedTime: f.LandedTime, Registered: f.Registered,
+      DepartureAirport: ap(f.DepartureAirport), ArrivalActualAirport: ap(f.ArrivalActualAirport), ArrivalIntendedAirport: ap(f.ArrivalIntendedAirport),
+    })),
+    incomeStatementAll: raw.incomeStatementAll ? {
+      REVAccounts: (raw.incomeStatementAll.REVAccounts || []).map((a) => ({ Name: a.Name, ShortName: a.ShortName, Entries: (a.Entries || []).slice(0, 1).map((e) => ({ AccountId: e.AccountId, Account: e.Account })) })),
+      EXPAccounts: (raw.incomeStatementAll.EXPAccounts || []).map((a) => ({ Name: a.Name, ShortName: a.ShortName, Entries: (a.Entries || []).slice(0, 1).map((e) => ({ AccountId: e.AccountId, Account: e.Account })) })),
+    } : null,
+    formerAircraft: Object.fromEntries(Object.entries(raw.formerAircraft || {}).map(([k, a]) => [k, a ? { Identifier: a.Identifier, AircraftType: { DisplayName: a.AircraftType?.DisplayName } } : null])),
+    airports: Object.fromEntries(Object.entries(raw.airports || {}).map(([k, a]) => [k, ap(a)])),
+  };
 }

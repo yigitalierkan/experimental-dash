@@ -134,6 +134,13 @@ export function terminalHeader(active, d) {
 }
 
 export function demoBanner(d) {
+  if (d?.stale) {
+    const b = document.createElement('div');
+    b.className = 'banner';
+    b.innerHTML = `<b>ÖNBELLEK VERİSİ.</b> <span class="muted">OnAir API son çalıştırmada cevap vermedi; ${new Date(d.fetchedAt).toISOString().slice(0, 16).replace('T', ' ')}Z tarihli veri gösteriliyor.</span>`;
+    document.querySelector('main').prepend(b);
+    return;
+  }
   if (!d?.demo) return;
   const b = document.createElement('div');
   b.className = 'banner';
