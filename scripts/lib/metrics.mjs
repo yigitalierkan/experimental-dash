@@ -40,6 +40,7 @@ function airportLite(a) {
 /** Decide how the company holds an aircraft → which capital cost applies. */
 export function holdingMode(ac, companyId, override = 'auto') {
   if (override && override !== 'auto') return override;
+  if (ac.AircraftLeaseId || ac.AircraftLease) return 'lease';
   if (ac.RentCompanyId && ac.RentCompanyId === companyId) return 'rent';
   return 'own';
 }
