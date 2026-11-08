@@ -2,8 +2,8 @@
 
 OnAir Company verilerini [OnAir public API](https://server1.onair.company/swagger/index.html) üzerinden çekip GitHub Pages'te yayınlanan statik bir dashboard'a dönüştürür.
 
-- **Filo** (`index.html`): kiralamadan bugüne uçak başına gerçekleşen gelir / sabit gider / değişken gider / net K/Z, uçak detayı, turnover/kullanım, son 24 saatte uçmamış uçaklar
-- **Rotalar** (`routes.html`): Regular Routes listesi, harita üzerinde rotalar (great-circle), rotalara atanmış uçaklar ve performansları, filo konumları
+- **Filo** (`index.html`, `F1`): 7/30/90 gün ve tüm zamanlar için uçak başına gerçekleşen gelir / sabit gider / değişken gider / net K/Z, uçuş/gün (turnover), blok saat, kullanım; günlük filo gelir-gider grafiği; uçak detayı; son 24 saatte uçmamış uçaklar
+- **Rotalar** (`routes.html`, `F2`): Regular Routes listesi, harita üzerinde rotalar (great-circle), rotalara atanmış uçaklar ve performansları, filo konumları
 
 ## Nasıl çalışır
 
@@ -67,6 +67,7 @@ Kaynak: `/companies/{id}/cash_flow` kasa defteri. OnAir her satıra `AircraftId`
 | Hariç | Owner's equity, FBO yatırımları/sahiplik, FBO'ya alınan stok yakıt | şirket kalemi, uçağa yazılmaz |
 
 Sayfadaki seçenekler:
+- *Periyot*: **7G / 30G / 90G / Tümü** (klavye: `1` `2` `3` `4`). Tüm tablolar, grafikler, uçuş/blok saat/kullanım ve kalem kırılımı seçilen periyoda göre hesaplanır.
 - *Leasing maliyeti*: **Ödenen (nakit)** kasadan çıkan tutardır (peşin ödenen haftalar dahil). **Geçen süreye göre** ise haftalık bedel × kiralamadan bu yana geçen hafta.
 - *Genel giderler*: uçaklara dağıt / hariç tut.
 
@@ -84,5 +85,7 @@ npm test
 ```
 
 `site/data/debug.json`, API yanıtlarının alan adlarını ve ilk rota örneğini içerir. `/regular_routes` için swagger şeması olmadığından rota ayrıştırıcısı esnektir; bir şey eksik görünürse ilk bakılacak yer burası.
+
+Arayüz terminal tarzındadır (siyah zemin, amber başlıklar, monospace). Kısayollar: `F1`/`F2` sayfa, `1–4` periyot, `/` arama, `Esc` detayı kapat.
 
 Harita: Leaflet 1.9.4 (`site/vendor`, BSD-2) + CARTO/OpenStreetMap karoları.

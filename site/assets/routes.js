@@ -1,7 +1,7 @@
-import { $, esc, fmt, loadJson, statusPill, renderTable, setUpdated, demoBanner } from './common.js';
+import { $, esc, fmt, loadJson, statusPill, renderTable, demoBanner, terminalHeader } from './common.js';
 
 const L = window.L;
-const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+const dark = true;
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const COLORS = dark
   ? ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767']
@@ -64,7 +64,7 @@ function drawRoutes() {
     layers.set(r.id, { line, color });
   });
   for (const ap of airports.values()) {
-    L.circleMarker([ap.lat, ap.lon], { radius: 4, color: css('--surface-1'), weight: 2, fillColor: css('--text-primary'), fillOpacity: 1 })
+    L.circleMarker([ap.lat, ap.lon], { radius: 3.5, color: '#000', weight: 1.5, fillColor: '#ffa028', fillOpacity: 1 })
       .addTo(routeLayer)
       .bindTooltip(esc(ap.icao), { permanent: airports.size <= 40, direction: 'right', className: 'ap-label', offset: [6, 0] });
   }
@@ -95,9 +95,9 @@ function renderList(list) {
     const c = layers.get(r.id)?.color || 'var(--text-muted)';
     return `<div class="route-item ${state.sel === r.id ? 'sel' : ''}" data-id="${esc(r.id)}">
       <div class="t"><span><i style="display:inline-block;width:10px;height:3px;background:${c};vertical-align:middle;margin-right:6px;border-radius:2px"></i>${esc(r.name)}</span>
-      <span class="muted">${r.flightNumber ? '#' + esc(r.flightNumber) : ''}</span></div>
+      <span class="amb">${r.flightNumber ? '#' + esc(r.flightNumber) : ''}</span></div>
       <div class="s">${r.set ? `${esc(r.set)} · ` : ''}${r.distanceNm ? `${fmt.n0(r.distanceNm)} nm` : ''}${r.schedule?.dep ? ` · ${esc(r.schedule.dep)}–${esc(r.schedule.arr || '')}` : ''}${r.schedule?.days ? ` · ${esc(r.schedule.days)}` : ''}${r.active === false ? ' · <b>Pasif</b>' : ''}</div>
-      <div class="ac">${r.aircraft.length ? r.aircraft.map((a) => `<span class="pill">${esc(a.registration)}</span>`).join('') : '<span class="muted" style="font-size:12px">Uçak atanmamış</span>'}</div>
+      <div class="ac">${r.aircraft.length ? r.aircraft.map((a) => `<span class="pill">${esc(a.registration)}</span>`).join('') : '<span class="muted">UÇAK ATANMAMIŞ</span>'}</div>
     </div>`;
   }).join('') : '<div class="empty">Rota bulunamadı. (regular_routes boş dönmüş olabilir — data/debug.json dosyasına bakın.)</div>';
   $('#list').querySelectorAll('.route-item').forEach((el) => el.addEventListener('click', () => select(el.dataset.id, true)));
@@ -120,7 +120,7 @@ function select(id, zoom) {
   if (!r) { det.hidden = true; return; }
   det.hidden = false;
   const extra = Object.entries(r.extra || {}).filter(([k]) => !['Name', 'FlightNumber'].includes(k));
-  det.innerHTML = `<div class="card-head"><h2>${esc(r.name)}</h2><span class="spacer"></span><a href="#" id="closeDet">kapat</a></div>
+  det.innerHTML = `<div class="ph"><h2>${esc(r.name)}${r.flightNumber ? ' · #' + esc(r.flightNumber) : ''}</h2><span class="spacer"></span><a href="#" id="closeDet">KAPAT</a></div>
     <p class="hint">${esc(r.stops.map((s) => `${s.icao}${s.city ? ' (' + s.city + ')' : ''}`).join(' → '))}</p>
     <dl>
       <dt>Uçuş no</dt><dd>${esc(r.flightNumber || '—')}</dd>
@@ -128,10 +128,10 @@ function select(id, zoom) {
       <dt>Durum</dt><dd>${esc(r.status ?? '—')}</dd>
       ${extra.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}
     </dl>
-    <h2 style="margin-top:12px">Atanmış uçaklar</h2>
-    ${r.aircraft.length ? `<table><thead><tr><th>Tescil</th><th>Tip</th><th>Durum</th><th class="n">Uçuş/gün</th><th class="n">Net K/Z (bugüne)</th></tr></thead><tbody>
-      ${r.aircraft.map((a) => `<tr><td><b>${esc(a.registration)}</b></td><td>${esc(a.type || '—')}</td><td>${a.status ? statusPill(a.status) : '—'}</td><td class="n">${fmt.n2(a.flightsPerDay7d)}</td><td class="n ${a.net < 0 ? 'neg' : ''}"><a href="index.html#${encodeURIComponent(a.registration)}">${fmt.compact(a.net)}</a></td></tr>`).join('')}
-    </tbody></table>` : '<p class="muted">Bu rotaya uçak atanmamış.</p>'}`;
+    <div class="h3">Atanmış uçaklar</div>
+    ${r.aircraft.length ? `<div class="table-wrap"><table><thead><tr><th>Tescil</th><th>Tip</th><th>Durum</th><th class="n">Uçuş/gün</th><th class="n">Net K/Z (bugüne)</th></tr></thead><tbody>
+      ${r.aircraft.map((a) => `<tr><td><b>${esc(a.registration)}</b></td><td>${esc(a.type || '—')}</td><td>${a.status ? statusPill(a.status) : '—'}</td><td class="n">${fmt.n2(a.flightsPerDay7d)}</td><td class="n"><a class="${a.net < 0 ? 'neg' : 'pos'}" href="index.html#${encodeURIComponent(a.registration)}">${fmt.compact(a.net)}</a></td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="hint">Bu rotaya uçak atanmamış.</p>'}`;
   $('#closeDet').addEventListener('click', (e) => { e.preventDefault(); state.sel = null; select(null); });
   const ly = layers.get(r.id);
   if (zoom && ly) map.fitBounds(ly.line.getBounds().pad(0.3), { maxZoom: 8 });
@@ -161,7 +161,7 @@ function assignTable() {
     { key: 'type', label: 'Tip', get: (x) => x.a.type || '' },
     { key: 'status', label: 'Durum', get: (x) => x.a.status || '', render: (x) => (x.a.status ? statusPill(x.a.status) : '—') },
     { key: 'fpd', label: 'Uçuş/gün (7g)', num: true, get: (x) => x.a.flightsPerDay7d, render: (x) => fmt.n2(x.a.flightsPerDay7d) },
-    { key: 'p', label: 'Net K/Z (bugüne)', num: true, get: (x) => x.a.net, render: (x) => `<a href="index.html#${encodeURIComponent(x.a.registration)}" class="${x.a.net < 0 ? 'neg' : ''}">${fmt.money(x.a.net)}</a>` },
+    { key: 'p', label: 'Net K/Z (bugüne)', num: true, get: (x) => x.a.net, render: (x) => `<a href="index.html#${encodeURIComponent(x.a.registration)}" class="${x.a.net < 0 ? 'neg' : 'pos'}">${fmt.money(x.a.net)}</a>` },
   ], rows, { sortKey: 'route', sortDir: 'asc', empty: 'Rotalara atanmış uçak bulunamadı.' });
 }
 
@@ -169,11 +169,11 @@ function assignTable() {
   try {
     [R, D] = await Promise.all([loadJson('data/routes.json'), loadJson('data/dashboard.json').catch(() => null)]);
   } catch (e) {
-    $('main').innerHTML = `<div class="card"><h2>Veri yüklenemedi</h2><p class="hint">${esc(e.message)}</p></div>`;
+    terminalHeader('routes', null);
+    $('main').innerHTML = `<div class="banner">VERİ YÜKLENEMEDİ: ${esc(e.message)}</div>`;
     return;
   }
-  if (D?.company?.name) { $('#title').innerHTML = `${esc(D.company.name)} <small>${esc(D.company.code || '')}</small>`; document.title = `${D.company.name} · Rotalar`; }
-  setUpdated($('#updated'), D || R);
+  terminalHeader('routes', D || R);
   demoBanner(D || R);
   map = L.map('map', { worldCopyJump: true, zoomSnap: 0.5 }).setView([40, 20], 3);
   L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`, {

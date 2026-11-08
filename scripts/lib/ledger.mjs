@@ -122,9 +122,8 @@ export function buildLedger(raw, { now = Date.now() } = {}) {
       b.tx.push({ t: e.t, amount, cat, desc: note ?? String(e.Description || '').split('\n')[0].slice(0, 140) });
     }
     const day = new Date(e.t).toISOString().slice(0, 10);
-    const dd = b.daily.get(day) || { rev: 0, fixed: 0, variable: 0, overhead: 0 };
-    const g = CATEGORIES[cat].group;
-    dd[g === 'revenue' ? 'rev' : g] += amount;
+    const dd = b.daily.get(day) || {};
+    dd[cat] = (dd[cat] || 0) + amount;
     b.daily.set(day, dd);
   };
 
@@ -187,12 +186,9 @@ export function buildLedger(raw, { now = Date.now() } = {}) {
     const leaseAccrued = L?.WeeklyPayment && weeksElapsed != null ? L.WeeklyPayment * weeksElapsed : leasePaid;
     const revenue = sum('revenue'), fixed = sum('fixed'), variable = sum('variable'), overhead = sum('overhead');
     const h = hours.get(b.id) || 0;
-    // cumulative daily series (cash basis)
-    let cr = 0, cf = 0, cv = 0, co = 0;
-    const timeline = [...b.daily.entries()].sort(([a], [c]) => (a < c ? -1 : 1)).map(([day, d]) => {
-      cr += d.rev; cf += d.fixed; cv += d.variable; co += d.overhead;
-      return [day, r0(cr), r0(cf), r0(cv), r0(co)];
-    });
+    // per-day, per-category amounts (cash basis) — the client aggregates any period from this
+    const daily = [...b.daily.entries()].sort(([a], [c]) => (a < c ? -1 : 1))
+      .map(([day, cats]) => [day, Object.fromEntries(Object.entries(cats).map(([k, v]) => [k, r0(v)]).filter(([, v]) => v))]);
     return {
       id: b.id,
       registration: b.registration || `#${b.id.slice(0, 6)}`,
@@ -207,7 +203,7 @@ export function buildLedger(raw, { now = Date.now() } = {}) {
       cats: Object.fromEntries(Object.entries(b.cats).map(([k, v]) => [k, r0(v)])),
       revenue: r0(revenue), fixed: r0(fixed), variable: r0(variable), overhead: r0(overhead),
       leasePaid: r0(leasePaid), leaseAccrued: r0(leaseAccrued),
-      timeline,
+      daily,
       tx: b.tx.sort((a, c) => c.t - a.t).slice(0, 40).map((x) => ({ ...x, t: new Date(x.t).toISOString(), amount: Math.round(x.amount * 100) / 100 })),
     };
   }).sort((a, b) => (b.revenue + b.fixed + b.variable) - (a.revenue + a.fixed + a.variable));

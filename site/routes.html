@@ -9,27 +9,23 @@
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<header class="top">
-  <h1 id="title">OnAir Dashboard</h1>
-  <nav><a href="index.html">Filo</a><a href="routes.html" class="active">Rotalar</a></nav>
-  <span class="updated" id="updated"></span>
-</header>
+<header class="top"></header>
 <main>
   <section class="kpis" id="kpis"></section>
   <div class="controls">
-    <input type="search" id="q" placeholder="Rota / havalimanı / tescil ara…">
+    <input type="search" id="q" placeholder="ROTA / ICAO / TESCİL…">
     <label><input type="checkbox" id="showFleet" checked> Uçak konumlarını göster</label>
     <label><input type="checkbox" id="onlyAssigned"> Sadece uçak atanmış rotalar</label>
   </div>
   <div class="routes-layout">
     <div id="map"></div>
     <aside class="side">
-      <div class="card detail" id="detail" hidden></div>
+      <div class="panel detail" id="detail" hidden></div>
       <div id="list"></div>
     </aside>
   </div>
-  <section class="card" style="margin-top:16px">
-    <div class="card-head"><h2>Rotalara tanımlı uçaklar</h2></div>
+  <section class="panel">
+    <div class="ph"><h2>Rotalara tanımlı uçaklar</h2></div>
     <p class="hint">Her satır bir rota–uçak eşleşmesi. Net K/Z, uçağın kiralandığı günden bugüne kasa defterinden hesaplanır (Filo sayfasında varsayılan ayarlarla). Tutara tıklayınca uçağın detayı açılır.</p>
     <div class="table-wrap" id="assignTable"></div>
   </section>

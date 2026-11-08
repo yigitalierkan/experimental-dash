@@ -118,7 +118,7 @@ export function buildDashboard(raw, { now = Date.now(), idleHours = 24, ledger =
     totals: { ...Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round(v, 1)])), aircraft: aircraft.length, idle24h: aircraft.filter((a) => a.idle24h).length },
     ledger,
     aircraft,
-    flights: flightsOut.sort((a, b) => (a.start < b.start ? 1 : -1)).slice(0, 2000),
+    flights: flightsOut.sort((a, b) => (a.start < b.start ? 1 : -1)).slice(0, 8000),
   };
 }
 

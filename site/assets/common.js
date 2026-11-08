@@ -61,7 +61,9 @@ export const hideTip = () => { tip.style.display = 'none'; };
 /**
  * cols: [{ key, label, num?, get(row) -> sortable value, render(row) -> html }]
  */
-export function renderTable(el, cols, rows, { sortKey, sortDir = 'desc', empty = 'Kayıt yok' } = {}) {
+export function renderTable(el, cols, rows, { sortKey, sortDir = 'desc', empty = 'Kayıt yok', rowAttrs, onRow } = {}) {
+  if (rowAttrs) el._rowAttrs = rowAttrs;
+  if (onRow) el._onRow = onRow;
   const state = el._state || (el._state = { sortKey, sortDir });
   const col = cols.find((c) => c.key === state.sortKey);
   const sorted = col ? [...rows].sort((a, b) => {
@@ -71,13 +73,14 @@ export function renderTable(el, cols, rows, { sortKey, sortDir = 'desc', empty =
     return state.sortDir === 'asc' ? r : -r;
   }) : rows;
   el.innerHTML = `<table><thead><tr>${cols.map((c) => `<th data-k="${c.key}" class="${c.num ? 'n' : ''}" ${c.key === state.sortKey ? `aria-sort="${state.sortDir === 'asc' ? 'ascending' : 'descending'}"` : ''} ${c.title ? `title="${esc(c.title)}"` : ''}>${esc(c.label)}</th>`).join('')}</tr></thead>
-    <tbody>${sorted.length ? sorted.map((r) => `<tr>${cols.map((c) => `<td class="${c.num ? 'n' : ''}">${c.render ? c.render(r) : esc(c.get(r))}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" class="empty">${esc(empty)}</td></tr>`}</tbody></table>`;
+    <tbody>${sorted.length ? sorted.map((r) => `<tr ${el._rowAttrs ? el._rowAttrs(r) : ''}>${cols.map((c) => `<td class="${c.num ? 'n' : ''}">${c.render ? c.render(r) : esc(c.get(r))}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" class="empty">${esc(empty)}</td></tr>`}</tbody></table>`;
   el.querySelectorAll('th').forEach((th) => th.addEventListener('click', () => {
     const k = th.dataset.k;
     state.sortDir = state.sortKey === k && state.sortDir === 'desc' ? 'asc' : 'desc';
     state.sortKey = k;
     renderTable(el, cols, rows, { empty });
   }));
+  if (el._onRow) el.querySelectorAll('tbody tr[data-id]').forEach((tr) => { tr.style.cursor = 'pointer'; tr.addEventListener('click', () => el._onRow(tr.dataset.id)); });
 }
 
 /** Horizontal bar list; diverging around zero when values have both signs. */
@@ -107,14 +110,33 @@ export function renderBars(el, items, { format = fmt.n0, color = 'var(--seq)', d
 export function setUpdated(el, d) {
   const t = d.fetchedAt || d.generatedAt;
   const mins = Math.round((Date.now() - Date.parse(t)) / 60000);
-  el.textContent = `Veri: ${fmt.date(t)} (${mins < 60 ? mins + ' dk' : Math.round(mins / 60) + ' saat'} önce)`;
+  el.innerHTML = `DATA <span class="${mins > 90 ? 'neg' : 'pos'}">${new Date(t).toISOString().slice(11, 16)}Z</span> <span class="muted">(${mins < 60 ? mins + 'dk' : Math.round(mins / 60) + 's'})</span>`;
+}
+
+/** Terminal header: brand, command line, function keys, UTC clock. */
+export function terminalHeader(active, d) {
+  const name = d?.company?.name || 'ONAIR';
+  const code = d?.company?.code || '';
+  const h = document.querySelector('header.top');
+  h.innerHTML = `<div class="brand">${esc(code || 'OA')}</div>
+    <div class="cmd">${esc(name.toUpperCase())} <b>${active === 'fleet' ? 'FLEET P&L' : 'ROUTES'}</b> <span class="go">&lt;GO&gt;</span></div>
+    <nav class="fkeys"><a href="index.html" class="${active === 'fleet' ? 'active' : ''}"><kbd>F1</kbd>Filo</a><a href="routes.html" class="${active === 'routes' ? 'active' : ''}"><kbd>F2</kbd>Rotalar</a></nav>
+    <div class="clock"><span id="updated"></span><span class="utc" id="utc"></span></div>`;
+  const tick = () => { const n = new Date(); document.getElementById('utc').textContent = n.toISOString().slice(11, 19) + ' UTC'; };
+  tick(); setInterval(tick, 1000);
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input')) return;
+    if (e.key === 'F1') { e.preventDefault(); location.href = 'index.html'; }
+    if (e.key === 'F2') { e.preventDefault(); location.href = 'routes.html'; }
+  });
+  document.title = `${code || name} · ${active === 'fleet' ? 'Filo' : 'Rotalar'}`;
+  if (d) setUpdated(document.getElementById('updated'), d);
 }
 
 export function demoBanner(d) {
   if (!d?.demo) return;
   const b = document.createElement('div');
-  b.className = 'card';
-  b.style.borderColor = 'var(--warning)';
-  b.innerHTML = '<b>Demo verisi gösteriliyor.</b> <span class="muted">Repo ayarlarında ONAIR_API_KEY ve ONAIR_VA_ID secret\'larını ekleyip "Update dashboard" iş akışını çalıştırın.</span>';
+  b.className = 'banner';
+  b.innerHTML = '<b>DEMO VERİSİ.</b> <span class="muted">Repo ayarlarında ONAIR_API_KEY ve ONAIR_VA_ID secret\'larını ekleyip "Update dashboard" iş akışını çalıştırın.</span>';
   document.querySelector('main').prepend(b);
 }

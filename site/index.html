@@ -3,71 +3,58 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OnAir Filo Dashboard</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%9C%88%3C/text%3E%3C/svg%3E">
+  <title>Filo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22%23ffa028%22/%3E%3Ctext x=%2250%22 y=%2272%22 font-size=%2266%22 text-anchor=%22middle%22%3E%E2%9C%88%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<header class="top">
-  <h1 id="title">OnAir Dashboard</h1>
-  <nav><a href="index.html" class="active">Filo</a><a href="routes.html">Rotalar</a></nav>
-  <span class="updated" id="updated"></span>
-</header>
+<header class="top"></header>
+<div class="ticker" aria-label="Uçak başına net K/Z şeridi"><div class="track" id="ticker"></div></div>
 <main>
+  <div class="controls">
+    <label>Periyot
+      <span class="seg" id="period" title="Kısayol: 1 2 3 4">
+        <button data-v="7">7G</button><button data-v="30" aria-pressed="true">30G</button><button data-v="90">90G</button><button data-v="all">Tümü</button>
+      </span>
+    </label>
+    <label title="Ödenen: kasadan çıkan leasing tutarı (peşin haftalar dahil). Süreye göre: haftalık bedel × periyotta geçen hafta.">Leasing
+      <span class="seg" id="leaseBasis"><button data-v="cash" aria-pressed="true">Ödenen</button><button data-v="accrual">Süreye göre</button></span>
+    </label>
+    <label title="Personel, ekip oteli, uçağa bağlanamayan ceza/slot: blok saat payına. Filo yönetimi: eşit pay.">Genel gider
+      <span class="seg" id="overhead"><button data-v="1" aria-pressed="true">Dağıt</button><button data-v="0">Hariç</button></span>
+    </label>
+    <label><input type="checkbox" id="showFormer" checked> İade edilenler</label>
+    <input type="search" id="q" placeholder="TESCİL / TİP…">
+  </div>
+
   <section class="kpis" id="kpis"></section>
 
-  <div class="controls">
-    <label title="Nakit: kasadan çıkan leasing ödemeleri (peşin haftalar dahil). Tahakkuk: haftalık bedel × kiralamadan bu yana geçen hafta.">Leasing maliyeti
-      <span class="seg" id="leaseBasis">
-        <button data-v="cash" aria-pressed="true">Ödenen (nakit)</button>
-        <button data-v="accrual">Geçen süreye göre</button>
-      </span>
-    </label>
-    <label title="Personel, ekip oteli, uçağa bağlanamayan ceza/slot ücretleri blok saat payına; filo yönetimi ücreti eşit olarak dağıtılır.">Genel giderler
-      <span class="seg" id="overhead">
-        <button data-v="1" aria-pressed="true">Uçaklara dağıt</button>
-        <button data-v="0">Hariç tut</button>
-      </span>
-    </label>
-    <label><input type="checkbox" id="showFormer" checked> İade edilen uçakları göster</label>
-    <input type="search" id="q" placeholder="Tescil / tip ara…">
-  </div>
-
-  <div class="grid2">
-    <section class="card">
-      <div class="card-head"><h2>Uçak başına net kâr / zarar</h2></div>
-      <p class="hint" id="pnlHint"></p>
-      <div class="legend"><span><i style="background:var(--pos)"></i>Kâr</span><span><i style="background:var(--neg)"></i>Zarar</span></div>
+  <div class="row c21">
+    <section class="panel">
+      <div class="ph"><h2>Filo gelir / gider — günlük</h2><span class="spacer"></span><span class="meta" id="dailyMeta"></span></div>
+      <div class="legend"><span><i style="background:var(--pos)"></i>Gelir</span><span><i style="background:var(--neg)"></i>Gider</span><span><i style="background:#fff"></i>Kümülatif net</span></div>
+      <div id="dailyChart" class="linechart"></div>
+    </section>
+    <section class="panel">
+      <div class="ph"><h2>Net K/Z — uçak</h2><span class="spacer"></span><span class="meta" id="pnlMeta"></span></div>
       <div id="pnlBars"></div>
     </section>
-    <section class="card">
-      <div class="card-head"><h2>Kullanım oranı (son 7 gün)</h2></div>
-      <p class="hint">Blok saati ÷ 168 saat. Üzerine gelince günlük uçuş ve turnaround görünür.</p>
-      <div id="utilBars"></div>
-    </section>
   </div>
 
-  <section class="card">
-    <div class="card-head"><h2>Uçak başına K/Z — kiralandığı günden bugüne</h2><span class="spacer"></span><span class="muted" style="font-size:12px">Satıra tıkla → detay</span></div>
+  <section class="panel">
+    <div class="ph"><h2>Gelir / gider / kâr — uçak başına</h2><span class="spacer"></span><span class="meta">satıra tıkla → detay</span></div>
     <p class="hint" id="tableHint"></p>
     <div class="table-wrap" id="pnlTable"></div>
   </section>
 
-  <section class="card detail-card" id="detail" hidden></section>
+  <section class="panel detail-card" id="detail" hidden></section>
 
-  <section class="card">
-    <div class="card-head"><h2>24 saattir uçmayan uçaklar</h2><span class="muted" id="idleCount"></span></div>
-    <p class="hint">Son uçuşunun bitişinden bu yana ≥ <span id="idleH">24</span> saat geçmiş ve şu an uçuşta olmayan uçaklar.</p>
+  <section class="panel">
+    <div class="ph"><h2>24 saattir uçmayan uçaklar</h2><span class="spacer"></span><span class="meta" id="idleCount"></span></div>
     <div class="table-wrap" id="idleTable"></div>
   </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Turnover / kullanım</h2></div>
-    <p class="hint">Turnover = günlük uçuş (rotasyon) sayısı. Turnaround = iki uçuş arası ortalama yerde kalma süresi (48 saatten kısa aralar).</p>
-    <div class="table-wrap" id="turnTable"></div>
-  </section>
 </main>
-<footer id="foot">Veriler OnAir API'den GitHub Actions ile saatlik çekilir. Hesaplama yöntemi için README'ye bakın.</footer>
+<footer id="foot">Kaynak: OnAir API kasa defteri (cash_flow), filo ve uçuş kayıtları · GitHub Actions ile saatlik güncellenir · Yöntem: README.</footer>
 <script type="module" src="assets/dashboard.js"></script>
 </body>
 </html>
