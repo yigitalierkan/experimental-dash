@@ -36,6 +36,10 @@ if (flag('--mock')) {
     console.error('ONAIR_API_KEY ve ONAIR_COMPANY_ID ortam değişkenleri gerekli (ya da --mock).');
     process.exit(1);
   }
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  console.log(`Secret kontrolü: COMPANY_ID uzunluk=${companyId.length} uuid=${UUID.test(companyId)} | API_KEY uzunluk=${apiKey.length} uuid=${UUID.test(apiKey)} | aynı değer=${apiKey === companyId}`);
+  if (!UUID.test(companyId)) { console.error('ONAIR_COMPANY_ID UUID formatında değil (ör. 1a2b3c4d-....). Tırnak/boşluk/fazla karakter olmadığından emin ol.'); process.exit(1); }
+  if (apiKey === companyId) { console.error('ONAIR_API_KEY ile ONAIR_COMPANY_ID aynı — ikisi farklı değerler olmalı.'); process.exit(1); }
   const client = new OnAirClient({ apiKey, baseUrl: env.ONAIR_BASE_URL || undefined });
   raw = await fetchSnapshot({ client, companyId, flightDays: settings.flightDays });
   console.log(`API çağrısı: ${raw.apiCalls}`);
