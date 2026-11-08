@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Preflight + GET with browser Origin
-        env:
-          ONAIR_API_KEY: ${{ secrets.ONAIR_API_KEY }}
-          ONAIR_VA_ID: ${{ secrets.ONAIR_VA_ID }}
+      - uses: actions/checkout@v4
+      - name: Proxy checks
         run: |
           O="https://${{ github.repository_owner }}.github.io"
-          U="https://server1.onair.company/api/v1/virtual_airlines/$ONAIR_VA_ID"
-          echo "== OPTIONS (preflight)"
-          curl -s -o /dev/null -D - -X OPTIONS "$U" -H "Origin: $O" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: oa-apikey" | grep -i -E "^HTTP|access-control|vary" || true
-          echo "== GET"
-          curl -s -o /dev/null -D - "$U" -H "Origin: $O" -H "oa-apikey: $ONAIR_API_KEY" | grep -i -E "^HTTP|access-control|retry-after|x-rate|ratelimit" || true
+          P="$(cat proxy/url.txt)"
+          echo "== PROXY health"; curl -s -D - "$P/health" -H "Origin: $O" | grep -i -E "^HTTP|access-control|^ok" || true
+          echo "== PROXY preflight"; curl -s -o /dev/null -D - -X OPTIONS "$P/api/v1/regular_routes" -H "Origin: $O" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: oa-apikey" | grep -i -E "^HTTP|access-control" || true
+          echo "== PROXY no key (expect 401)"; curl -s -o /dev/null -w "%{http_code}\n" "$P/api/v1/regular_routes" -H "Origin: $O"
+          echo "== PROXY dummy key → OnAir (expect OnAir error, not CORS)"; curl -s -D - "$P/api/v1/regular_routes" -H "Origin: $O" -H "oa-apikey: 00000000-0000-0000-0000-000000000000" | grep -i -E "^HTTP|access-control-allow-origin" || true
+          echo "== PROXY foreign origin (expect 403)"; curl -s -o /dev/null -w "%{http_code}\n" "$P/health" -H "Origin: https://evil.example"
+          echo "== PROXY POST (expect 405)"; curl -s -o /dev/null -w "%{http_code}\n" -X POST "$P/api/v1/fbos/jobs/x/accept" -H "Origin: $O"

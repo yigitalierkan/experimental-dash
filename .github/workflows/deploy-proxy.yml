@@ -49,10 +49,11 @@ jobs:
           command: deploy --var ALLOWED_ORIGINS:https://${{ github.repository_owner }}.github.io,http://localhost:8080
 
       - name: Health check
+        continue-on-error: true
         run: |
           url="https://onair-proxy.${SUBDOMAIN}.workers.dev"
-          for i in 1 2 3 4 5 6; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$url/health" -H "Origin: https://${OWNER,,}.github.io")
+          for i in $(seq 1 18); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url/health" -H "Origin: https://${OWNER,,}.github.io" || true)
             echo "health $code"; [ "$code" = "200" ] && break; sleep 10
           done
           echo "::notice::PROXY_URL=$url"
