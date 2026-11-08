@@ -53,6 +53,12 @@ export class OnAirClient {
         if (optional) { this.log('  (opsiyonel) ' + msg); return null; }
         throw new Error(msg);
       }
+      // OnAir sometimes answers 200 with only { Error: "..." } (no Content)
+      if (body && typeof body === 'object' && !Array.isArray(body) && body.Error && !('Content' in body)) {
+        const msg = `${url.pathname}: ${body.Error}`;
+        if (optional) { this.log(`  (opsiyonel) ${msg}`); return null; }
+        throw new Error(msg);
+      }
       if (body && typeof body === 'object' && 'Content' in body) {
         if (body.Error && body.Content == null) {
           if (optional) { this.log(`  (opsiyonel) ${url.pathname}: ${body.Error}`); return null; }
@@ -93,7 +99,13 @@ export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFli
   const raw = { fetchedAt: new Date().toISOString(), companyId };
 
   log('→ company');
-  raw.company = await client.get(C, {}, { optional: true });
+  try {
+    raw.company = await client.get(C);
+  } catch (e) {
+    throw new Error(`Şirket bilgisi alınamadı → ${e.message}\n` +
+      'Kontrol et: ONAIR_COMPANY_ID doğru şirket UUID\'si mi ve ONAIR_API_KEY bu şirkete mi ait? ' +
+      '(OnAir client → Company → Settings sayfasındaki Company Id ve API Key)');
+  }
   log(`  yapı: ${shape(raw.company)}`);
   if (raw.company?.Name) log(`  şirket: ${raw.company.Name} (${raw.company.AirlineCode ?? ''})`);
 
