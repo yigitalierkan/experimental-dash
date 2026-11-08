@@ -27,7 +27,7 @@ export function mockSnapshot(now = Date.now()) {
   const companyId = uuid();
   const fleet = [];
   const flights = [];
-  const economics = {};
+  const leases = [];
   const regs = ['TC-OAA', 'TC-OAB', 'TC-OAC', 'TC-OAD', 'TC-OAE', 'TC-OAF', 'TC-OAG', 'TC-OAH', 'TC-OAI', 'TC-OAJ'];
   regs.forEach((reg, i) => {
     const t = TYPES[i % TYPES.length];
@@ -45,16 +45,14 @@ export function mockSnapshot(now = Date.now()) {
       airframeHours: 1000 + i * 731, airframeCondition: 0.7 + rnd() * 0.29, HoursBefore100HInspection: 100 * rnd(),
       MustDoMaintenance: i === 7, CurrentCompanyId: companyId, RentCompanyId: i === 9 ? companyId : null,
     });
-    economics[id] = {
-      AircraftType: fleet.at(-1).AircraftType,
-      HourlyProfit: t.rev - t.fuel - t.crew - t.maint, CostHourlyFuel: t.fuel, CostHourlyCrew: t.crew, CostHourlyTotalMaintenance: t.maint,
-      CostHourlyRentTotal: t.own / 25, CostWeeklyOwning: t.own, CostWeeklyLease: t.own * 1.2,
-      AverageWeeklyFlightHours: 35, ProfitHourlyOwning: t.rev - t.fuel - t.crew - t.maint - t.own / 35,
-      ProfitHourlyLease: t.rev - t.fuel - t.crew - t.maint - (t.own * 1.2) / 35,
-    };
+    const leaseStart = now - (24 - i) * 864e5;
+    fleet.at(-1).AircraftLeaseId = uuid();
+    fleet.at(-1).AircraftLease = { WeeklyPayment: t.own, StartDate: iso(leaseStart), EndDate: iso(leaseStart + (i % 2 ? 4 : 48) * 7 * 864e5), NextWeeklyPaymentDate: iso(leaseStart + 21 * 864e5) };
+    leases.push({ id, reg, t, leaseStart });
     let cursor = now - idleTail * 3600e3 - (i === 0 ? -0.5 * 3600e3 : 0);
+    const floor = leaseStart;
     let k = 0;
-    while (cursor > now - 30 * 864e5 && intensity > 0 && k < 200) {
+    while (cursor > floor + 864e5 && intensity > 0 && k < 200) {
       const dur = (0.8 + rnd() * 2.5) * 3600e3;
       const start = cursor - dur;
       const dep = AIRPORTS[(i + k + 1) % AIRPORTS.length], arr = AIRPORTS[(i + k) % AIRPORTS.length];
@@ -76,10 +74,39 @@ export function mockSnapshot(now = Date.now()) {
     route('ESB-DXB', 410, AIRPORTS[3], AIRPORTS[7], 8, 13.25), route('AYT-CDG', 512, AIRPORTS[1], AIRPORTS[6], 2, 15),
   ];
   const airports = Object.fromEntries(AIRPORTS.map((a) => [a.ICAO, a]));
-  const cashFlow = { CompanyCurrentCash: 12_450_000, Entries: flights.filter((_, j) => j % 4 === 0).map((f) => {
+  // ledger shaped like live OnAir cash_flow
+  const ACC = { pax: uuid(), cargo: uuid(), renting: uuid(), fuel: uuid(), landing: uuid(), maint: uuid(), staff: uuid(), other: uuid(), finance: uuid(), penalty: uuid(), equity: uuid() };
+  const E = [];
+  const ent = (t, AccountId, Amount, Description, AircraftId = null) => E.push({ Id: uuid(), AccountId, Amount: Math.round(Amount * 100) / 100, CreationDate: iso(t), Description, AircraftId, CarryForward: false });
+  ent(now - 25 * 864e5, ACC.equity, 3_000_000, "Owner's equity");
+  for (const L of leases) ent(L.leaseStart, ACC.renting, -L.t.own * 3, `Aircraft ${L.t.DisplayName} (N${L.reg.slice(-3)}) leased at LTFM (3 weeks advance payments) by Demo`, L.id);
+  for (const f of flights) {
+    if (!f.EndTime) continue;
+    const L = leases.find((l) => l.id === f.AircraftId); const t = Date.parse(f.EndTime + 'Z'); const h = (t - Date.parse(f.EngineOnTime + 'Z')) / 3600e3;
     const ac = fleet.find((a) => a.Id === f.AircraftId);
-    return { Id: uuid(), CreationDate: f.EndTime || f.StartTime, Amount: Math.round((rnd() - 0.25) * 40000), Description: `Job pay - ${ac.Identifier} ${f.DepartureAirport.ICAO}` };
-  }) };
+    ent(t, rnd() < 0.7 ? ACC.pax : ACC.cargo, L.t.rev * h * (0.55 + rnd() * 0.5), rnd() < 0.5 ? 'Payment for PAX (BUSTRIP).' : 'Payment for Route #101', f.AircraftId);
+    ent(t - 3600e3 * h, ACC.fuel, -L.t.fuel * h * (0.9 + rnd() * 0.2), `JET Fuel bought at Sofia FBO (LBSF), 900 gal @2.1/gal for ${ac.Identifier} ${L.t.DisplayName}`, f.AircraftId);
+    ent(t, ACC.landing, -(L.t.seats * 4), `Landing fee at ${f.ArrivalIntendedAirport.ICAO} for ${ac.Identifier} ${L.t.DisplayName}`, f.AircraftId);
+    if (rnd() < 0.2) ent(t, ACC.landing, -(L.t.seats * 0.6), `Parking fee at ${f.ArrivalIntendedAirport.ICAO} for ${ac.Identifier} ${L.t.DisplayName} (from 1/1 to 1/2)`, f.AircraftId);
+    if (rnd() < 0.15) ent(t, ACC.finance, -L.t.seats * 25, `Airport slots fee for Flight #101 from LTFM to LTAI, departure: Monday 06:00`);
+  }
+  for (const L of leases.filter((_, j) => j % 3 === 0)) ent(now - 5 * 864e5, ACC.maint, -L.t.maint * 40, `Aircraft ${L.reg} in workshop at TRISTAN SOFIA LBSF`, L.id);
+  for (let d = 22; d > 0; d -= 7) ent(now - d * 864e5, ACC.finance, -250_000, `Weekly Fleet Management costs (10 aircraft)`);
+  for (let d = 23; d > 0; d--) { ent(now - d * 864e5, ACC.staff, -18_000, 'Salary from 1/1 to 1/7 for Pilot Demo'); ent(now - d * 864e5, ACC.other, -900, 'Hotel for Pilot Demo at LTFM'); }
+  ent(now - 9 * 864e5, ACC.penalty, -40_000, 'Penalty for shutting down engine(s) at LTFM Friday 23:10 outside slot hours.');
+  // a returned aircraft: revenue + lease, then refund
+  const gone = uuid();
+  ent(now - 20 * 864e5, ACC.renting, -900_000, 'Aircraft Boeing 737-800 (N777X) leased at LTAI (3 weeks advance payments) by Demo', gone);
+  for (let d = 19; d > 12; d--) ent(now - d * 864e5, ACC.pax, 120_000, 'Payment for PAX (BUSTRIP).', gone);
+  ent(now - 12 * 864e5, ACC.renting, 300_000, 'Refund of the TC-OLD lease (ticket #12)');
+  const cashFlow = { CompanyCurrentCash: 12_450_000, Entries: E };
+  const acc = (Name, ShortName, id) => ({ Name, ShortName, Entries: [{ AccountId: id, Account: { Id: id, Name, ShortName } }] });
+  const incomeStatementAll = {
+    REVAccounts: [acc('Passenger Services', 'REVPax', ACC.pax), acc('Cargo Services', 'REVCargo', ACC.cargo)],
+    EXPAccounts: [acc('Aircraft Renting', 'EXPRent', ACC.renting), acc('Fuel', 'EXPFuel', ACC.fuel), acc('Landing & Parking', 'EXPLand', ACC.landing), acc('Maintenance', 'EXPMaint', ACC.maint),
+      acc('Staff', 'EXPStaff', ACC.staff), acc('Other Expenses', 'EXPOther', ACC.other), acc('Finance Charges', 'EXPFin', ACC.finance), acc('Penalties', 'EXPPen', ACC.penalty)],
+  };
+  const formerAircraft = { [gone]: { Identifier: 'TC-OLD', AircraftType: { DisplayName: 'Boeing 737-800' } } };
   return { fetchedAt: new Date(now).toISOString(), companyId, company: { Name: 'Demo Airways', AirlineCode: 'OAX', Level: 12, Reputation: 0.87 },
-    fleet, flights, economics, cashFlow, regularRoutes, airports, apiCalls: 0 };
+    fleet, flights, cashFlow, incomeStatementAll, formerAircraft, regularRoutes, airports, apiCalls: 0 };
 }

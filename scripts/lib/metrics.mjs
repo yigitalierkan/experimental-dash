@@ -37,52 +37,6 @@ function airportLite(a) {
   };
 }
 
-/** Decide how the company holds an aircraft → which capital cost applies. */
-export function holdingMode(ac, companyId, override = 'auto') {
-  if (override && override !== 'auto') return override;
-  if (ac.AircraftLeaseId || ac.AircraftLease) return 'lease';
-  if (ac.RentCompanyId && ac.RentCompanyId === companyId) return 'rent';
-  return 'own';
-}
-
-/**
- * Hourly economics per aircraft from /aircraft/{id}/economic_details.
- * Model (documented in README):
- *   operatingProfit/h = HourlyProfit (revenue − fuel − crew − maintenance)
- *   revenue/h         = HourlyProfit + fuel + crew + maintenance
- *   variable cost/h   = fuel + crew + maintenance (+ rent/h when rented)
- *   fixed cost/week   = CostWeeklyOwning | CostWeeklyLease | 0 (rent)
- */
-export function economicsModel(e, mode) {
-  if (!e) return null;
-  const fuel = num(e.CostHourlyFuel);
-  const crew = num(e.CostHourlyCrew);
-  const maint = num(e.CostHourlyTotalMaintenance);
-  const revenuePerHour = num(e.HourlyProfit) + fuel + crew + maint;
-  const rentPerHour = mode === 'rent' ? num(e.CostHourlyRentTotal) : 0;
-  const fixedPerWeek = mode === 'own' ? num(e.CostWeeklyOwning) : mode === 'lease' ? num(e.CostWeeklyLease) : 0;
-  return {
-    revenuePerHour: round(revenuePerHour),
-    fuelPerHour: round(fuel),
-    crewPerHour: round(crew),
-    maintenancePerHour: round(maint),
-    rentPerHour: round(rentPerHour),
-    variableCostPerHour: round(fuel + crew + maint + rentPerHour),
-    fixedCostPerWeek: round(fixedPerWeek),
-    onairWeeklyHours: round(num(e.AverageWeeklyFlightHours), 1),
-    onairProfitPerHour: round(mode === 'own' ? num(e.ProfitHourlyOwning) : mode === 'lease' ? num(e.ProfitHourlyLease) : num(e.HourlyProfit) - num(e.CostHourlyRentTotal)),
-  };
-}
-
-/** Projection for `weeks` at `weeklyHours`. Same formula used by the front-end. */
-export function project(model, weeklyHours, weeks) {
-  if (!model) return null;
-  const h = weeklyHours * weeks;
-  const revenue = model.revenuePerHour * h;
-  const cost = model.variableCostPerHour * h + model.fixedCostPerWeek * weeks;
-  return { hours: round(h, 1), revenue: round(revenue, 0), cost: round(cost, 0), profit: round(revenue - cost, 0) };
-}
-
 /** Utilisation / turnover metrics for one aircraft over a trailing window. */
 export function utilisation(flights, now, days) {
   const from = now - days * DAY;
@@ -105,30 +59,7 @@ export function utilisation(flights, now, days) {
   };
 }
 
-/** Sum cash-flow lines whose description mentions the registration. */
-export function cashFlowByAircraft(cashFlow, fleet, now, days = 30) {
-  const entries = (cashFlow && (cashFlow.Entries || cashFlow.entries)) || (Array.isArray(cashFlow) ? cashFlow : []);
-  const from = now - days * DAY;
-  const out = {};
-  const regs = fleet
-    .filter((a) => a.Identifier && a.Identifier.length >= 3)
-    .map((a) => ({ id: a.Id, re: new RegExp(`(^|[^A-Z0-9])${a.Identifier.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}([^A-Z0-9]|$)`, 'i') }));
-  for (const e of entries) {
-    const t = parseUtc(e.CreationDate);
-    if (t == null || t < from) continue;
-    const desc = String(e.Description || '');
-    const hit = regs.find((r) => r.re.test(desc));
-    if (!hit) continue;
-    const o = (out[hit.id] ||= { income: 0, expense: 0, lines: 0 });
-    const amt = num(e.Amount);
-    if (amt >= 0) o.income += amt; else o.expense += -amt;
-    o.lines++;
-  }
-  for (const o of Object.values(out)) { o.income = round(o.income, 0); o.expense = round(o.expense, 0); o.net = round(o.income - o.expense, 0); }
-  return { days, byAircraft: out, matchedEntries: Object.values(out).reduce((s, o) => s + o.lines, 0), totalEntries: entries.length };
-}
-
-export function buildDashboard(raw, { now = Date.now(), holding = 'auto', idleHours = 24 } = {}) {
+export function buildDashboard(raw, { now = Date.now(), idleHours = 24, ledger = null } = {}) {
   const companyId = raw.companyId;
   const byAc = new Map();
   const flightsOut = [];
@@ -141,7 +72,7 @@ export function buildDashboard(raw, { now = Date.now(), holding = 'auto', idleHo
     flightsOut.push({ aircraftId: id, start: new Date(w.start).toISOString(), end: w.end ? new Date(w.end).toISOString() : null, hours: round(w.hours, 2),
       from: f.DepartureAirport?.ICAO ?? null, to: (f.ArrivalActualAirport || f.ArrivalIntendedAirport)?.ICAO ?? null });
   }
-  const cash = cashFlowByAircraft(raw.cashFlow, raw.fleet || [], now, 30);
+  const pnlById = new Map((ledger?.aircraft || []).map((l) => [l.id, l]));
 
   const aircraft = (raw.fleet || []).map((ac) => {
     const ws = (byAc.get(ac.Id) || []).sort((a, b) => b.start - a.start);
@@ -149,8 +80,6 @@ export function buildDashboard(raw, { now = Date.now(), holding = 'auto', idleHo
     const lastActivity = last ? (last.end ?? now) : null; // ongoing flight counts as now
     const status = AIRCRAFT_STATUS[ac.AircraftStatus] ?? String(ac.AircraftStatus ?? '?');
     const inFlight = ac.AircraftStatus === 3 || (last && !last.done && now - last.start < 18 * HOUR);
-    const mode = holdingMode(ac, companyId, holding);
-    const model = economicsModel(raw.economics?.[ac.Id], mode);
     const u7 = utilisation(ws, now, 7);
     const u30 = utilisation(ws, now, 30);
     const hoursSince = lastActivity != null ? (now - lastActivity) / HOUR : null;
@@ -162,7 +91,6 @@ export function buildDashboard(raw, { now = Date.now(), holding = 'auto', idleHo
       status,
       location: airportLite(ac.CurrentAirport),
       position: typeof ac.Latitude === 'number' ? { lat: ac.Latitude, lon: ac.Longitude, heading: ac.Heading ?? null } : null,
-      holding: mode,
       airframeHours: round(num(ac.airframeHours), 1),
       condition: round(num(ac.airframeCondition) * 100, 1),
       hoursBefore100h: round(ac.HoursBefore100HInspection, 1),
@@ -172,27 +100,23 @@ export function buildDashboard(raw, { now = Date.now(), holding = 'auto', idleHo
       hoursSinceLastFlight: hoursSince != null ? round(hoursSince, 1) : null,
       idle24h: !inFlight && (hoursSince == null || hoursSince >= idleHours),
       turnover: { d7: u7, d30: u30 },
-      economics: model,
-      projection30d: project(model, u7.blockHours, 30 / 7),
-      cashFlow30d: cash.byAircraft[ac.Id] || null,
+      pnl: pnlById.has(ac.Id) ? (({ revenue, fixed, variable, overhead }) => ({ revenue, fixed, variable, overhead, net: revenue + fixed + variable + overhead }))(pnlById.get(ac.Id)) : null,
     };
   });
 
   const totals = aircraft.reduce((t, a) => {
-    const p = a.projection30d;
-    if (p) { t.revenue += p.revenue; t.cost += p.cost; t.profit += p.profit; }
     t.hours7 += a.turnover.d7.blockHours; t.flights7 += a.turnover.d7.flights;
     return t;
-  }, { revenue: 0, cost: 0, profit: 0, hours7: 0, flights7: 0 });
+  }, { hours7: 0, flights7: 0 });
 
   return {
     generatedAt: new Date(now).toISOString(),
     fetchedAt: raw.fetchedAt,
     company: raw.company ? { name: raw.company.Name, code: raw.company.AirlineCode, level: raw.company.Level, reputation: raw.company.Reputation } : null,
     cash: raw.cashFlow ? { current: raw.cashFlow.CompanyCurrentCash ?? null } : null,
-    settings: { holding, idleHours },
+    settings: { idleHours },
     totals: { ...Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round(v, 1)])), aircraft: aircraft.length, idle24h: aircraft.filter((a) => a.idle24h).length },
-    cashMatch: { matched: cash.matchedEntries, total: cash.totalEntries },
+    ledger,
     aircraft,
     flights: flightsOut.sort((a, b) => (a.start < b.start ? 1 : -1)).slice(0, 2000),
   };
@@ -264,7 +188,7 @@ export function buildRoutes(raw, dashboard) {
     const aircraft = [...ctx.aircraft.values()].map((a) => {
       const d = dashById.get(a.Id);
       return { id: a.Id, registration: a.Identifier, type: a.AircraftType?.DisplayName || d?.type || null, status: d?.status ?? AIRCRAFT_STATUS[a.AircraftStatus] ?? null,
-        flightsPerDay7d: d?.turnover.d7.flightsPerDay ?? null, profit30d: d?.projection30d?.profit ?? null };
+        flightsPerDay7d: d?.turnover.d7.flightsPerDay ?? null, net: d?.pnl?.net ?? null };
     });
     const distanceNm = stops.length > 1 ? stops.slice(1).reduce((s, b, j) => s + gcNm(stops[j], b), 0) : null;
     return {
@@ -306,7 +230,7 @@ function knownRoute(r, i, { airportCache, fleetById, dashById }) {
     type: ac?.AircraftType?.DisplayName ?? d?.type ?? null,
     status: d?.status ?? (ac ? AIRCRAFT_STATUS[ac.AircraftStatus] : null) ?? null,
     flightsPerDay7d: d?.turnover.d7.flightsPerDay ?? null,
-    profit30d: d?.projection30d?.profit ?? null,
+    net: d?.pnl?.net ?? null,
   }] : [];
   const dist = stops.length === 2 ? gcNm(stops[0], stops[1]) : NaN;
   const days = fmtDays(r.Days);

@@ -138,8 +138,9 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
     log('    ' + shape(await client.get(`${C}/dashboard`, {}, { optional: true })));
   }
 
-  log('→ flights (sayfalı)');
-  const cutoff = Date.now() - flightDays * 86400_000;
+  const leaseStarts = raw.fleet.map((a) => Date.parse((a.AircraftLease?.StartDate || '') + 'Z')).filter(Number.isFinite);
+  const cutoff = Math.min(Date.now() - flightDays * 86400_000, ...leaseStarts);
+  log(`→ flights (sayfalı, ${new Date(cutoff).toISOString().slice(0, 10)} sonrası)`);
   const flights = [];
   const seen = new Set();
   const limit = 50;
@@ -156,9 +157,9 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
   log(`  ${flights.length} uçuş`);
 
   // Some flights (esp. AI / regular-route) may be missing from company feed; top up per aircraft.
-  log(`→ aircraft flights (uçak başına, son ${flightDays} gün)`);
+  log('→ aircraft flights (uçak başına)');
   for (const ac of raw.fleet) {
-    for (let page = 0; page < 12; page++) {
+    for (let page = 0; page < 40; page++) {
       const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: page * limit, limit }, { optional: true }));
       let added = 0;
       for (const f of list) {
@@ -170,23 +171,22 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
   }
   log(`  toplam ${flights.length} uçuş`);
 
-  log('→ economic_details (uçak başına)');
-  raw.economics = {};
-  for (const ac of raw.fleet) {
-    raw.economics[ac.Id] = await client.get(`/aircraft/${ac.Id}/economic_details`, {}, { optional: true });
-  }
-  const e0 = Object.values(raw.economics).find(Boolean);
-  if (e0) log(`  yapı: ${shape(e0)}`);
-
   log('→ cash_flow');
   raw.cashFlow = await client.get(`${C}/cash_flow`, {}, { optional: true });
-  log(`  yapı: ${shape(raw.cashFlow)}`);
+  const ents = raw.cashFlow?.Entries || [];
+  log(`  ${ents.length} satır, ${ents.map((e) => e.CreationDate).sort()[0] ?? '—'} → bugün`);
 
-  log('→ income_statement (30g)');
-  raw.incomeStatement = await client.get(`${C}/income_statement`, {
-    startDate: new Date(cutoff).toISOString(),
-    endDate: new Date().toISOString(),
+  log('→ income_statement (tüm zamanlar, hesap adları için)');
+  raw.incomeStatementAll = await client.get(`${C}/income_statement`, {
+    startDate: '2020-01-01T00:00:00Z', endDate: new Date().toISOString(),
   }, { optional: true });
+
+  // aircraft that appear in the ledger but are no longer in the fleet (returned leases)
+  const fleetIds = new Set(raw.fleet.map((a) => a.Id));
+  const former = [...new Set(ents.map((e) => e.AircraftId).filter((id) => id && !fleetIds.has(id)))];
+  raw.formerAircraft = {};
+  if (former.length) log(`→ eski uçaklar (${former.length})`);
+  for (const id of former) raw.formerAircraft[id] = await client.get(`/aircraft/${id}`, {}, { optional: true });
 
   log('→ regular_routes');
   raw.regularRoutes = await client.get('/regular_routes', {}, { optional: true });

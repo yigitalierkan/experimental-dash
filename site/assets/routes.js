@@ -129,8 +129,8 @@ function select(id, zoom) {
       ${extra.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}
     </dl>
     <h2 style="margin-top:12px">Atanmış uçaklar</h2>
-    ${r.aircraft.length ? `<table><thead><tr><th>Tescil</th><th>Tip</th><th>Durum</th><th class="n">Uçuş/gün</th><th class="n">Kâr 30g</th></tr></thead><tbody>
-      ${r.aircraft.map((a) => `<tr><td><b>${esc(a.registration)}</b></td><td>${esc(a.type || '—')}</td><td>${a.status ? statusPill(a.status) : '—'}</td><td class="n">${fmt.n2(a.flightsPerDay7d)}</td><td class="n ${a.profit30d < 0 ? 'neg' : ''}">${fmt.compact(a.profit30d)}</td></tr>`).join('')}
+    ${r.aircraft.length ? `<table><thead><tr><th>Tescil</th><th>Tip</th><th>Durum</th><th class="n">Uçuş/gün</th><th class="n">Net K/Z (bugüne)</th></tr></thead><tbody>
+      ${r.aircraft.map((a) => `<tr><td><b>${esc(a.registration)}</b></td><td>${esc(a.type || '—')}</td><td>${a.status ? statusPill(a.status) : '—'}</td><td class="n">${fmt.n2(a.flightsPerDay7d)}</td><td class="n ${a.net < 0 ? 'neg' : ''}"><a href="index.html#${encodeURIComponent(a.registration)}">${fmt.compact(a.net)}</a></td></tr>`).join('')}
     </tbody></table>` : '<p class="muted">Bu rotaya uçak atanmamış.</p>'}`;
   $('#closeDet').addEventListener('click', (e) => { e.preventDefault(); state.sel = null; select(null); });
   const ly = layers.get(r.id);
@@ -161,7 +161,7 @@ function assignTable() {
     { key: 'type', label: 'Tip', get: (x) => x.a.type || '' },
     { key: 'status', label: 'Durum', get: (x) => x.a.status || '', render: (x) => (x.a.status ? statusPill(x.a.status) : '—') },
     { key: 'fpd', label: 'Uçuş/gün (7g)', num: true, get: (x) => x.a.flightsPerDay7d, render: (x) => fmt.n2(x.a.flightsPerDay7d) },
-    { key: 'p', label: 'Kâr öngörüsü 30g', num: true, get: (x) => x.a.profit30d, render: (x) => `<span class="${x.a.profit30d < 0 ? 'neg' : ''}">${fmt.money(x.a.profit30d)}</span>` },
+    { key: 'p', label: 'Net K/Z (bugüne)', num: true, get: (x) => x.a.net, render: (x) => `<a href="index.html#${encodeURIComponent(x.a.registration)}" class="${x.a.net < 0 ? 'neg' : ''}">${fmt.money(x.a.net)}</a>` },
   ], rows, { sortKey: 'route', sortDir: 'asc', empty: 'Rotalara atanmış uçak bulunamadı.' });
 }
 

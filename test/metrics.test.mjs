@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseUtc, flightWindow, utilisation, economicsModel, project, buildDashboard, buildRoutes, cashFlowByAircraft } from '../scripts/lib/metrics.mjs';
+import { parseUtc, flightWindow, utilisation, buildDashboard, buildRoutes } from '../scripts/lib/metrics.mjs';
+import { buildLedger, classify } from '../scripts/lib/ledger.mjs';
 import { mockSnapshot } from '../scripts/lib/mock.mjs';
 
 const H = 3600e3;
@@ -29,35 +30,15 @@ test('utilisation: flights/day, util %, turnaround', () => {
   assert.equal(u.utilisationPct, Math.round((6 / 168) * 1000) / 10);
 });
 
-test('economics model + projection includes fixed weekly cost', () => {
-  const m = economicsModel({ HourlyProfit: 1000, CostHourlyFuel: 300, CostHourlyCrew: 100, CostHourlyTotalMaintenance: 100, CostWeeklyOwning: 7000 }, 'own');
-  assert.equal(m.revenuePerHour, 1500);
-  assert.equal(m.variableCostPerHour, 500);
-  const p = project(m, 10, 1);
-  assert.deepEqual(p, { hours: 10, revenue: 15000, cost: 12000, profit: 3000 });
-  assert.equal(project(m, 0, 1).profit, -7000); // idle aircraft loses its fixed cost
-});
-
-test('cash flow matches registrations on word boundaries only', () => {
-  const now = Date.now();
-  const fleet = [{ Id: 'a', Identifier: 'TC-ABC' }, { Id: 'b', Identifier: 'TC-AB' }];
-  const cf = { Entries: [
-    { CreationDate: new Date(now - H).toISOString(), Amount: 100, Description: 'Job TC-ABC done' },
-    { CreationDate: new Date(now - H).toISOString(), Amount: -40, Description: 'Fuel TC-AB' },
-  ] };
-  const r = cashFlowByAircraft(cf, fleet, now);
-  assert.equal(r.byAircraft.a.net, 100);
-  assert.equal(r.byAircraft.b.net, -40);
-});
-
 test('end-to-end on mock snapshot', () => {
   const raw = mockSnapshot();
-  const d = buildDashboard(raw);
+  const d = buildDashboard(raw, { ledger: buildLedger(raw) });
   assert.equal(d.aircraft.length, 10);
   assert.ok(d.aircraft.some((a) => a.idle24h));
   assert.ok(!d.aircraft.find((a) => a.status === 'InFlight').idle24h);
   const r = buildRoutes(raw, d);
   assert.equal(r.count, 6);
+  assert.ok(d.aircraft.every((a) => a.pnl));
   for (const route of r.routes) {
     assert.ok(route.stops.length >= 2, route.name);
     assert.ok(route.stops.every((s) => s.lat != null));
@@ -95,4 +76,58 @@ test('routes: live regular_routes shape', () => {
   assert.equal(r.schedule.dep, '09:30Z');
   assert.equal(r.schedule.days, 'Pzt, Çar, Cum');
   assert.ok(r.distanceNm > 300);
+});
+
+test('ledger: classification of live descriptions', () => {
+  const A = (name) => ({ name });
+  assert.equal(classify({ Amount: 500, Description: 'Payment for Route #412' }, A('Passenger Services')), 'pax');
+  assert.equal(classify({ Amount: 500, Description: 'Payment for Cargo (GOODS).' }, A('Cargo Services')), 'cargo');
+  assert.equal(classify({ Amount: -5, Description: 'Aircraft CRJ550 (N1F) leased at LBSF (4 weeks advance payments) by X', AircraftId: 'a' }, A('Aircraft Renting')), 'lease');
+  assert.equal(classify({ Amount: -5, Description: 'Weekly lease fee for aircraft CRJ550 (LZ-DSK)', AircraftId: 'a' }, A('Aircraft Renting')), 'lease');
+  assert.equal(classify({ Amount: 5, Description: 'Refund of the LZ-X lease (ticket #3)' }, A('Money transfer')), 'leaseRefund');
+  assert.equal(classify({ Amount: -5, Description: 'JET Fuel bought at Sofia FBO (LBSF), 10 gal @2/gal for LZ-TVJ A320', AircraftId: 'a' }, A('Fuel')), 'fuel');
+  assert.equal(classify({ Amount: -5, Description: 'Fuel bought at local dealer : 0LL : 10 gal, Jet : 5 gal at TRISTAN SOFIA LBSF' }, A('Other')), 'excluded');
+  assert.equal(classify({ Amount: -5, Description: 'Landing fee at EPWA for LZ-TVJ A320', AircraftId: 'a' }, A('Landing & Parking')), 'landing');
+  assert.equal(classify({ Amount: -5, Description: 'Parking fee at EPWA for LZ-TVJ A320 (from 1 to 2)', AircraftId: 'a' }, A('Landing & Parking')), 'parking');
+  assert.equal(classify({ Amount: -5, Description: 'Airport slots fee for Flight #412 from LBSF to EPWA, departure: Monday 06:00' }, A('Finance Charges')), 'slot');
+  assert.equal(classify({ Amount: -5, Description: 'Weekly Fleet Management costs (14 aircraft)' }, A('Finance Charges')), 'fleetMgmt');
+  assert.equal(classify({ Amount: -5, Description: 'Aircraft LZ-TVJ in workshop at TRISTAN SOFIA LBSF', AircraftId: 'a' }, A('Maintenance')), 'maintenance');
+  assert.equal(classify({ Amount: -5, Description: 'Hotel for Jane at EPWA' }, A('Other Expenses')), 'crewHotel');
+  assert.equal(classify({ Amount: -5, Description: 'Salary from 1 to 2 for Jane' }, A('Staff')), 'staff');
+  assert.equal(classify({ Amount: 5, Description: "Owner's equity" }, A('Other')), 'excluded');
+  assert.equal(classify({ Amount: -5, Description: 'TRISTAN SOFIA LBSF weekly ownership' }, A('FBO expenses')), 'excluded');
+});
+
+test('ledger: per-aircraft totals, slot mapping, overhead allocation, lease accrual', () => {
+  const now = Date.UTC(2026, 10, 8);
+  const day = (d) => new Date(now - d * 864e5).toISOString();
+  const fleet = [
+    { Id: 'a', Identifier: 'LZ-AAA', AircraftLease: { WeeklyPayment: 700, StartDate: day(14), EndDate: day(-14) } },
+    { Id: 'b', Identifier: 'LZ-BBB', AircraftLease: { WeeklyPayment: 70, StartDate: day(7), EndDate: day(-21) } },
+  ];
+  const flights = [
+    { AircraftId: 'a', EngineOnTime: day(3), EngineOffTime: new Date(now - 3 * 864e5 + 3 * 3600e3).toISOString() },
+    { AircraftId: 'b', EngineOnTime: day(2), EngineOffTime: new Date(now - 2 * 864e5 + 1 * 3600e3).toISOString() },
+  ];
+  const E = [
+    { AccountId: 'R', Amount: 1000, Description: 'Payment for Route #1', AircraftId: 'a', CreationDate: day(3) },
+    { AccountId: 'L', Amount: -1400, Description: 'Aircraft X (N1) leased at Y (2 weeks advance payments) by Z', AircraftId: 'a', CreationDate: day(14) },
+    { AccountId: 'F', Amount: -100, Description: 'Airport slots fee for Flight #1 from A to B, departure: Monday 06:00', CreationDate: day(3) },
+    { AccountId: 'S', Amount: -400, Description: 'Salary from x to y for P', CreationDate: day(1) },
+    { AccountId: 'F', Amount: -50, Description: 'Weekly Fleet Management costs (2 aircraft)', CreationDate: day(1) },
+  ];
+  const acc = (Name, id) => ({ Name, Entries: [{ AccountId: id, Account: { Id: id, Name } }] });
+  const raw = { fleet, flights, regularRoutes: [{ FlightNumber: 1, AircraftId: 'a' }],
+    cashFlow: { Entries: E }, incomeStatementAll: { REVAccounts: [acc('Passenger Services', 'R')], EXPAccounts: [acc('Aircraft Renting', 'L'), acc('Finance Charges', 'F'), acc('Staff', 'S')] } };
+  const L = buildLedger(raw, { now });
+  const A = L.aircraft.find((x) => x.id === 'a');
+  assert.equal(A.revenue, 1000);
+  assert.equal(A.cats.slot, -100);           // mapped via route flight number
+  assert.equal(A.cats.lease, -1400);
+  assert.equal(A.cats.staff, -300);          // 3h of 4h total block hours
+  assert.equal(A.leaseAccrued, 1400);        // 2 weeks × 700
+  assert.equal(A.flights, 1);
+  // b had no ledger lines of its own before overhead → it still receives its staff share
+  const B = L.aircraft.find((x) => x.id === 'b');
+  assert.equal(B.cats.staff, -100);
 });

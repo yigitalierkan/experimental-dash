@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OnAirClient, fetchSnapshot } from './lib/onair-client.mjs';
 import { buildDashboard, buildRoutes } from './lib/metrics.mjs';
+import { buildLedger } from './lib/ledger.mjs';
 import { mockSnapshot } from './lib/mock.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,7 +19,6 @@ const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : un
 
 const env = process.env;
 const settings = {
-  holding: env.HOLDING_MODE || 'auto',            // auto | own | lease | rent
   idleHours: Number(env.IDLE_HOURS || 24),
   flightDays: Number(env.FLIGHT_DAYS || 30),
 };
@@ -49,32 +49,30 @@ if (flag('--mock')) {
   if (flag('--save-raw')) await writeFile(join(root, 'raw-snapshot.json'), JSON.stringify(raw));
 }
 
-const dashboard = buildDashboard(raw, { holding: settings.holding, idleHours: settings.idleHours });
+const ledger = buildLedger(raw);
+const dashboard = buildDashboard(raw, { idleHours: settings.idleHours, ledger });
 const routes = buildRoutes(raw, dashboard);
 if (flag('--mock')) { dashboard.demo = true; routes.demo = true; }
 
-// Shape hints for troubleshooting (keys only + first route, no secrets).
+// Shape hints for troubleshooting (keys only, no secrets).
 const debug = {
   generatedAt: dashboard.generatedAt,
-  counts: { fleet: raw.fleet?.length ?? 0, flights: raw.flights?.length ?? 0, routes: routes.count, economics: Object.values(raw.economics || {}).filter(Boolean).length },
-  fleetKeys: raw.fleet?.[0] ? Object.keys(raw.fleet[0]) : [],
-  flightKeys: raw.flights?.[0] ? Object.keys(raw.flights[0]) : [],
-  economicsKeys: Object.values(raw.economics || {}).find(Boolean) ? Object.keys(Object.values(raw.economics).find(Boolean)) : [],
-  regularRoutesType: Array.isArray(raw.regularRoutes) ? 'array' : typeof raw.regularRoutes,
-  regularRoutesSample: Array.isArray(raw.regularRoutes) ? raw.regularRoutes.slice(0, 2) : raw.regularRoutes,
-  cashMatch: dashboard.cashMatch,
+  counts: { fleet: raw.fleet?.length ?? 0, flights: raw.flights?.length ?? 0, routes: routes.count, ledgerEntries: ledger.entries },
+  ledger: { from: ledger.from, to: ledger.to, catTotals: ledger.catTotals, excluded: ledger.excluded },
 };
 
 await mkdir(outDir, { recursive: true });
 await writeFile(join(outDir, 'dashboard.json'), JSON.stringify(dashboard));
 await writeFile(join(outDir, 'routes.json'), JSON.stringify(routes));
 await writeFile(join(outDir, 'debug.json'), JSON.stringify(debug, null, 2));
-console.log(`✓ ${dashboard.aircraft.length} uçak, ${dashboard.totals.idle24h} tanesi ${settings.idleHours}s+ boşta, ${routes.count} rota → site/data/`);
+console.log(`✓ ${dashboard.aircraft.length} uçak, ${dashboard.totals.idle24h} tanesi ${settings.idleHours}s+ boşta, ${routes.count} rota, ${ledger.aircraft.length} uçak defteri → site/data/`);
 
 // Run summary (GitHub Actions log + job summary) — computed metrics only
-const rows = dashboard.aircraft.map((a) => `| ${a.registration} | ${a.type} | ${a.status} / ${a.holding} | ${a.turnover.d7.flights} | ${a.turnover.d7.utilisationPct ?? '—'}% | ${a.hoursSinceLastFlight ?? '—'} | ${a.economics ? a.economics.revenuePerHour : '—'} | ${a.projection30d?.profit ?? '—'} | ${a.cashFlow30d?.net ?? '—'} |`);
-const summary = [`### ${dashboard.company?.name ?? 'OnAir'} — ${dashboard.aircraft.length} uçak, ${raw.flights?.length ?? 0} uçuş, ${routes.count} rota`, '',
-  '| Tescil | Tip | Durum | Uçuş 7g | Kullanım 7g | Son uçuştan beri (s) | Gelir/saat | Kâr 30g | Kasa 30g |', '|---|---|---|---|---|---|---|---|---|', ...rows, '',
-  `Kasa eşleşmesi: ${dashboard.cashMatch.matched}/${dashboard.cashMatch.total} satır`].join('\n');
+const m = (v) => (v == null ? '—' : Math.round(v).toLocaleString('en-US'));
+const rows = ledger.aircraft.map((a) => `| ${a.registration}${a.inFleet ? '' : ' (iade)'} | ${a.type ?? '—'} | ${a.since?.slice(0, 10) ?? '—'} | ${a.flights} | ${a.blockHours} | ${m(a.revenue)} | ${m(a.fixed)} | ${m(a.variable)} | ${m(a.overhead)} | ${m(a.revenue + a.fixed + a.variable + a.overhead)} |`);
+const summary = [`### ${dashboard.company?.name ?? 'OnAir'} — kiralamadan bugüne uçak başına K/Z (nakit, ${ledger.entries} kasa satırı ${ledger.from?.slice(0, 10)} → ${ledger.to?.slice(0, 10)})`, '',
+  '| Tescil | Tip | Başlangıç | Uçuş | Blok saat | Gelir | Sabit | Değişken | Genel gider | Net |', '|---|---|---|---|---|---|---|---|---|---|', ...rows, '',
+  `Kategori toplamları: ${Object.entries(ledger.catTotals).map(([k, v]) => `${k}=${m(v)}`).join(', ')}`,
+  `Uçak dışı (hariç): ${ledger.excluded.n} satır, ${m(ledger.excluded.sum)} — ${ledger.excluded.top.map(([k, v]) => `${k}: ${m(v)}`).join('; ')}`].join('\n');
 console.log(summary);
 if (env.GITHUB_STEP_SUMMARY) await writeFile(env.GITHUB_STEP_SUMMARY, summary + '\n', { flag: 'a' });

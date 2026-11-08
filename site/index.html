@@ -17,27 +17,28 @@
   <section class="kpis" id="kpis"></section>
 
   <div class="controls">
-    <label>Projeksiyon süresi
-      <span class="seg" id="horizon">
-        <button data-v="1">1 hafta</button><button data-v="4.2857" aria-pressed="true">30 gün</button><button data-v="13.0357">90 gün</button><button data-v="52.1429">1 yıl</button>
+    <label title="Nakit: kasadan çıkan leasing ödemeleri (peşin haftalar dahil). Tahakkuk: haftalık bedel × kiralamadan bu yana geçen hafta.">Leasing maliyeti
+      <span class="seg" id="leaseBasis">
+        <button data-v="cash" aria-pressed="true">Ödenen (nakit)</button>
+        <button data-v="accrual">Geçen süreye göre</button>
       </span>
     </label>
-    <label>Kullanım varsayımı
-      <span class="seg" id="basis">
-        <button data-v="d7" aria-pressed="true" title="Son 7 gündeki gerçek blok saatleri">Son 7 gün</button>
-        <button data-v="d30" title="Son 30 gündeki gerçek blok saatleri">Son 30 gün</button>
-        <button data-v="onair" title="OnAir'in tip için verdiği ortalama haftalık saat">OnAir ortalaması</button>
+    <label title="Personel, ekip oteli, uçağa bağlanamayan ceza/slot ücretleri blok saat payına; filo yönetimi ücreti eşit olarak dağıtılır.">Genel giderler
+      <span class="seg" id="overhead">
+        <button data-v="1" aria-pressed="true">Uçaklara dağıt</button>
+        <button data-v="0">Hariç tut</button>
       </span>
     </label>
-    <input type="search" id="q" placeholder="Tescil / tip / havalimanı ara…">
+    <label><input type="checkbox" id="showFormer" checked> İade edilen uçakları göster</label>
+    <input type="search" id="q" placeholder="Tescil / tip ara…">
   </div>
 
   <div class="grid2">
     <section class="card">
-      <div class="card-head"><h2>Uçak başına öngörülen kâr</h2></div>
-      <p class="hint" id="profitHint"></p>
+      <div class="card-head"><h2>Uçak başına net kâr / zarar</h2></div>
+      <p class="hint" id="pnlHint"></p>
       <div class="legend"><span><i style="background:var(--pos)"></i>Kâr</span><span><i style="background:var(--neg)"></i>Zarar</span></div>
-      <div id="profitBars"></div>
+      <div id="pnlBars"></div>
     </section>
     <section class="card">
       <div class="card-head"><h2>Kullanım oranı (son 7 gün)</h2></div>
@@ -45,6 +46,14 @@
       <div id="utilBars"></div>
     </section>
   </div>
+
+  <section class="card">
+    <div class="card-head"><h2>Uçak başına K/Z — kiralandığı günden bugüne</h2><span class="spacer"></span><span class="muted" style="font-size:12px">Satıra tıkla → detay</span></div>
+    <p class="hint" id="tableHint"></p>
+    <div class="table-wrap" id="pnlTable"></div>
+  </section>
+
+  <section class="card detail-card" id="detail" hidden></section>
 
   <section class="card">
     <div class="card-head"><h2>24 saattir uçmayan uçaklar</h2><span class="muted" id="idleCount"></span></div>
@@ -57,14 +66,8 @@
     <p class="hint">Turnover = günlük uçuş (rotasyon) sayısı. Turnaround = iki uçuş arası ortalama yerde kalma süresi (48 saatten kısa aralar).</p>
     <div class="table-wrap" id="turnTable"></div>
   </section>
-
-  <section class="card">
-    <div class="card-head"><h2>Gelir / gider / kâr projeksiyonu</h2></div>
-    <p class="hint" id="projHint"></p>
-    <div class="table-wrap" id="projTable"></div>
-  </section>
 </main>
-<footer>Veriler OnAir API'den GitHub Actions ile periyodik olarak çekilir. Projeksiyon modeli için README'ye bakın.</footer>
+<footer id="foot">Veriler OnAir API'den GitHub Actions ile saatlik çekilir. Hesaplama yöntemi için README'ye bakın.</footer>
 <script type="module" src="assets/dashboard.js"></script>
 </body>
 </html>
