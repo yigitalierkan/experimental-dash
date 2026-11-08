@@ -5,7 +5,7 @@ const DEFAULT_BASE = 'https://server1.onair.company/api/v1';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class OnAirClient {
-  constructor({ apiKey, baseUrl = DEFAULT_BASE, minIntervalMs = 250, log = console.log }) {
+  constructor({ apiKey, baseUrl = DEFAULT_BASE, minIntervalMs = 1200, log = console.log }) {
     if (!apiKey) throw new Error('ONAIR_API_KEY eksik');
     this.apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/$/, '');
@@ -15,7 +15,7 @@ export class OnAirClient {
     this.calls = 0;
   }
 
-  async get(path, query = {}, { retries = 2, optional = false } = {}) {
+  async get(path, query = {}, { retries = 5, optional = false } = {}) {
     const url = new URL(this.baseUrl + path);
     for (const [k, v] of Object.entries(query)) {
       if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
@@ -33,7 +33,7 @@ export class OnAirClient {
             Accept: 'application/json',
             'User-Agent': 'onair-dashboard (github actions)',
           },
-          signal: AbortSignal.timeout(25_000),
+          signal: AbortSignal.timeout(30_000),
         });
       } catch (e) {
         if (attempt < retries) { await sleep(1000 * 2 ** attempt); continue; }
@@ -95,13 +95,20 @@ export function asArray(v) {
   return [];
 }
 
-/** Download everything the dashboard needs. Returns a "raw" snapshot object. */
-export async function fetchSnapshot({ client, companyId, vaMode = false, flightDays = 30, maxFlightPages = 60, budgetMs = 240_000, log = console.log }) {
+/**
+ * Download what the dashboard needs, rate-limit friendly:
+ *  - essential first (VA/company, fleet, cash_flow, routes), flights last;
+ *  - `prev` (previous snapshot) is used as a cache: airports, account names, former aircraft and
+ *    already-known flights are reused, so a normal run only fetches the newest flight page per aircraft.
+ */
+export async function fetchSnapshot({ client, companyId, vaMode = false, flightDays = 30, budgetMs = 420_000, prev = null, log = console.log }) {
   const t0 = Date.now();
-  const overBudget = () => Date.now() - t0 > budgetMs;
+  const left = () => budgetMs - (Date.now() - t0);
   const C = `/companies/${companyId}`;
   const raw = { fetchedAt: new Date().toISOString(), companyId, mode: vaMode ? 'va' : 'company' };
+  if (prev) log(`Önbellek: ${prev.fetchedAt} tarihli snapshot (${prev.flights?.length ?? 0} uçuş)`);
 
+  // 1) identity
   if (vaMode) {
     log('→ virtual airline');
     try {
@@ -110,14 +117,8 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
       throw new Error(`Virtual Airline bilgisi alınamadı → ${e.message}\n` +
         'Kontrol et: ONAIR_VA_ID, VA\'nın Id\'si mi ve ONAIR_API_KEY bu VA\'nın API key\'i mi? (OnAir client → Virtual Airline → Settings)');
     }
-    log(`  yapı: ${shape(raw.va)}`);
-    // VA'lar OnAir'de bir şirket kaydına sahip; isim/kod alanları VA nesnesinde de bulunur
     raw.company = { Name: raw.va?.Name, AirlineCode: raw.va?.AirlineCode, Level: raw.va?.Level, Reputation: raw.va?.Reputation };
     log(`  VA: ${raw.va?.Name ?? '?'} (${raw.va?.AirlineCode ?? ''})`);
-    raw.company = { ...raw.company, ...((await client.get(C, {}, { optional: true })) || {}) };
-    log('→ members');
-    raw.members = asArray(await client.get(`/virtual_airlines/${companyId}/members`, {}, { optional: true }));
-    log(`  ${raw.members.length} üye`);
   } else {
     log('→ company');
     try {
@@ -130,80 +131,62 @@ export async function fetchSnapshot({ client, companyId, vaMode = false, flightD
     log(`  şirket: ${raw.company?.Name ?? '?'} (${raw.company?.AirlineCode ?? ''})`);
   }
 
+  // 2) fleet + ledger (required)
   log('→ fleet');
-  const fleetRaw = await client.get(`${C}/fleet`);
-  log(`  yapı: ${shape(fleetRaw)}`);
-  raw.fleet = asArray(fleetRaw);
+  raw.fleet = asArray(await client.get(`${C}/fleet`));
   log(`  ${raw.fleet.length} uçak`);
-  if (!raw.fleet.length) {
-    log('  ! Filo boş. Dashboard yapısı:');
-    log('    ' + shape(await client.get(`${C}/dashboard`, {}, { optional: true })));
-  }
-
-  const leaseStarts = raw.fleet.map((a) => Date.parse((a.AircraftLease?.StartDate || '') + 'Z')).filter(Number.isFinite);
-  const cutoff = Math.min(Date.now() - flightDays * 86400_000, ...leaseStarts);
-  log(`→ flights (sayfalı, ${new Date(cutoff).toISOString().slice(0, 10)} sonrası)`);
-  const flights = [];
-  const seen = new Set();
-  const limit = 50;
-  for (let page = 0; page < maxFlightPages && !overBudget(); page++) {
-    const resp = await client.get(`${C}/flights`, { startIndex: page * limit, limit });
-    if (page === 0) log(`  yapı: ${shape(resp)}`);
-    const batch = asArray(resp);
-    let added = 0;
-    for (const f of batch) { if (!seen.has(f.Id)) { seen.add(f.Id); flights.push(f); added++; } }
-    const oldest = Math.min(...batch.map((f) => Date.parse(f.StartTime || f.EngineOnTime || 0) || Infinity));
-    if (batch.length < limit || added === 0 || oldest < cutoff) break;
-  }
-  raw.flights = flights;
-  log(`  ${flights.length} uçuş`);
-
-  // Some flights (esp. AI / regular-route) may be missing from company feed; top up per aircraft.
-  log('→ aircraft flights (uçak başına)');
-  for (const ac of raw.fleet) {
-    if (overBudget()) { log(`  ! zaman bütçesi doldu, kalan uçakların ek uçuş sayfaları atlandı`); break; }
-    for (let page = 0; page < 40; page++) {
-      const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: page * limit, limit }, { optional: true }));
-      let added = 0;
-      for (const f of list) {
-        if (!seen.has(f.Id)) { seen.add(f.Id); flights.push({ ...f, AircraftId: f.AircraftId || ac.Id }); added++; }
-      }
-      const oldest = Math.min(...list.map((f) => Date.parse((f.StartTime || '') + 'Z') || Infinity));
-      if (list.length < limit || oldest < cutoff || (added === 0 && page > 0)) break;
-    }
-  }
-  log(`  toplam ${flights.length} uçuş (${Math.round((Date.now() - t0) / 1000)}s)`);
 
   log('→ cash_flow');
-  raw.cashFlow = await client.get(`${C}/cash_flow`, {}, { optional: true });
+  raw.cashFlow = await client.get(`${C}/cash_flow`);
   const ents = raw.cashFlow?.Entries || [];
   log(`  ${ents.length} satır, ${ents.map((e) => e.CreationDate).sort()[0] ?? '—'} → bugün`);
 
-  log('→ income_statement (tüm zamanlar, hesap adları için)');
-  raw.incomeStatementAll = await client.get(`${C}/income_statement`, {
-    startDate: '2020-01-01T00:00:00Z', endDate: new Date().toISOString(),
-  }, { optional: true });
+  // account names: reuse cached unless the ledger uses an AccountId we have not seen
+  const knownAcc = new Set();
+  for (const grp of [prev?.incomeStatementAll?.REVAccounts, prev?.incomeStatementAll?.EXPAccounts]) for (const a of grp || []) for (const e of a.Entries || []) knownAcc.add(e.AccountId);
+  const needAcc = ents.some((e) => e.AccountId && !knownAcc.has(e.AccountId));
+  if (needAcc || !prev?.incomeStatementAll) {
+    log('→ income_statement (hesap adları)');
+    raw.incomeStatementAll = await client.get(`${C}/income_statement`, { startDate: '2020-01-01T00:00:00Z', endDate: new Date().toISOString() }, { optional: true })
+      ?? prev?.incomeStatementAll ?? null;
+  } else raw.incomeStatementAll = prev.incomeStatementAll;
 
-  // aircraft that appear in the ledger but are no longer in the fleet (returned leases)
-  const fleetIds = new Set(raw.fleet.map((a) => a.Id));
-  const former = [...new Set(ents.map((e) => e.AircraftId).filter((id) => id && !fleetIds.has(id)))];
-  raw.formerAircraft = {};
-  if (former.length) log(`→ eski uçaklar (${former.length})`);
-  for (const id of former) raw.formerAircraft[id] = await client.get(`/aircraft/${id}`, {}, { optional: true });
-
+  // 3) routes (+ airports not cached yet)
   log('→ regular_routes');
-  raw.regularRoutes = await client.get('/regular_routes', {}, { optional: true });
-  log(`  yapı: ${shape(raw.regularRoutes)}`);
-  const r0 = asArray(raw.regularRoutes)[0];
-  if (r0) for (const k of Object.keys(r0)) if (Array.isArray(r0[k]) && r0[k].length) log(`  ${k}[0]: ${shape(r0[k][0])}`);
+  raw.regularRoutes = (await client.get('/regular_routes', {}, { optional: true })) ?? prev?.regularRoutes ?? [];
+  log(`  ${asArray(raw.regularRoutes).length} rota`);
+  raw.airports = { ...(prev?.airports || {}) };
+  const missingIcaos = [...collectBareIcaos(raw.regularRoutes)].filter((i) => !raw.airports[i]);
+  if (missingIcaos.length) log(`→ airports (${missingIcaos.length} yeni)`);
+  for (const icao of missingIcaos) { if (left() < 60_000) break; raw.airports[icao] = await client.get(`/airports/${icao}`, {}, { optional: true }); }
 
-  // Resolve airports referenced only by ICAO (routes) so they can be drawn on the map.
-  raw.airports = {};
-  const icaos = collectBareIcaos(raw.regularRoutes);
-  if (icaos.size) log(`→ airports (${icaos.size})`);
-  for (const icao of icaos) {
-    raw.airports[icao] = await client.get(`/airports/${icao}`, {}, { optional: true });
+  // 4) former aircraft (returned leases) — cached by id
+  const fleetIds = new Set(raw.fleet.map((a) => a.Id));
+  raw.formerAircraft = { ...(prev?.formerAircraft || {}) };
+  const former = [...new Set(ents.map((e) => e.AircraftId).filter((id) => id && !fleetIds.has(id) && !(id in raw.formerAircraft)))];
+  if (former.length) log(`→ eski uçaklar (${former.length} yeni)`);
+  for (const id of former) { if (left() < 60_000) break; raw.formerAircraft[id] = await client.get(`/aircraft/${id}`, {}, { optional: true }); }
+
+  // 5) flights — incremental: newest page per aircraft, deeper pages only when the cache has a gap
+  const leaseStarts = raw.fleet.map((a) => Date.parse((a.AircraftLease?.StartDate || '') + 'Z')).filter(Number.isFinite);
+  const cutoff = Math.min(Date.now() - flightDays * 86400_000, ...leaseStarts);
+  const byId = new Map((prev?.flights || []).map((f) => [f.Id, f]));
+  const limit = 50;
+  log(`→ flights (${new Date(cutoff).toISOString().slice(0, 10)} sonrası, önbellekte ${byId.size})`);
+  let skipped = 0;
+  for (const ac of raw.fleet) {
+    for (let page = 0; page < 40; page++) {
+      if (left() < 45_000) { skipped++; break; }
+      const list = asArray(await client.get(`/aircraft/${ac.Id}/flights`, { startIndex: page * limit, limit }, { optional: true }));
+      let known = 0;
+      for (const f of list) { if (byId.has(f.Id) && byId.get(f.Id).EngineOffTime) known++; byId.set(f.Id, { ...f, AircraftId: f.AircraftId || ac.Id }); }
+      const oldest = Math.min(...list.map((f) => Date.parse((f.StartTime || '') + 'Z') || Infinity));
+      if (list.length < limit || oldest < cutoff || known > 0) break; // reached cached history
+    }
   }
+  if (skipped) log(`  ! zaman bütçesi: ${skipped} uçağın uçuşları önbellekten`);
+  raw.flights = [...byId.values()].filter((f) => (Date.parse((f.StartTime || '') + 'Z') || 0) >= cutoff - 7 * 86400_000);
+  log(`  ${raw.flights.length} uçuş (${Math.round((Date.now() - t0) / 1000)}s, ${client.calls} istek)`);
 
   raw.apiCalls = client.calls;
   return raw;

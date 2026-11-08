@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -30,38 +30,42 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Restore previous snapshot (cache)
+        run: |
+          url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/snapshot.json.gz"
+          curl -fsSL "$url" -o /tmp/prev.json.gz && echo "önbellek bulundu" || echo "önbellek yok"
+
       - name: Fetch OnAir data & compute metrics
         id: fetch
         continue-on-error: true
-        timeout-minutes: 6
+        timeout-minutes: 9
         env:
           ONAIR_API_KEY: ${{ secrets.ONAIR_API_KEY }}
           ONAIR_VA_ID: ${{ secrets.ONAIR_VA_ID }}
           ONAIR_COMPANY_ID: ${{ secrets.ONAIR_COMPANY_ID }}
           IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
           FLIGHT_DAYS: ${{ vars.FLIGHT_DAYS || '30' }}
-          FETCH_BUDGET_MS: "240000"
+          FETCH_BUDGET_MS: "420000"
         run: |
           if [ -z "$ONAIR_API_KEY" ] || { [ -z "$ONAIR_VA_ID" ] && [ -z "$ONAIR_COMPANY_ID" ]; }; then
             echo "::warning::ONAIR_API_KEY / ONAIR_VA_ID secret'ları yok — demo veriyle yayınlanıyor."
             node scripts/build.mjs --mock
           else
-            node scripts/build.mjs
+            node scripts/build.mjs --cache /tmp/prev.json.gz
           fi
 
-      - name: Fallback — rebuild from last published snapshot
+      - name: Fallback — rebuild from last snapshot (never demo when secrets exist)
         if: steps.fetch.outcome != 'success'
         env:
           IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
         run: |
-          echo "::warning::Canlı veri alınamadı; son yayınlanan snapshot ile yeniden derleniyor."
-          url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/snapshot.json.gz"
-          if curl -fsSL "$url" -o /tmp/snapshot.json.gz; then
-            node scripts/build.mjs --raw /tmp/snapshot.json.gz
-            cp /tmp/snapshot.json.gz site/data/snapshot.json.gz
+          if [ -f /tmp/prev.json.gz ]; then
+            echo "::warning::Canlı veri alınamadı; son snapshot ile yeniden derleniyor (yeni tasarım yine de yayınlanır)."
+            node scripts/build.mjs --raw /tmp/prev.json.gz
+            cp /tmp/prev.json.gz site/data/snapshot.json.gz
           else
-            echo "::warning::Önceki snapshot yok — demo veriyle yayınlanıyor."
-            node scripts/build.mjs --mock
+            echo "::error::Canlı veri alınamadı ve önbellek yok — yayın yapılmıyor, mevcut site korunuyor."
+            exit 1
           fi
 
       - uses: actions/configure-pages@v5

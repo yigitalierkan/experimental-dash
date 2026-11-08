@@ -47,7 +47,13 @@ if (flag('--mock')) {
   if (!UUID.test(companyId)) { console.error('VA/Company ID UUID formatında değil (ör. 1a2b3c4d-....). Tırnak/boşluk/fazla karakter olmadığından emin ol.'); process.exit(1); }
   if (apiKey === companyId) { console.error('ONAIR_API_KEY ile ID aynı — ikisi farklı değerler olmalı.'); process.exit(1); }
   const client = new OnAirClient({ apiKey, baseUrl: env.ONAIR_BASE_URL || undefined });
-  raw = slimSnapshot(await fetchSnapshot({ client, companyId, vaMode, flightDays: settings.flightDays, budgetMs: Number(env.FETCH_BUDGET_MS || 240_000) }));
+  let prev = null;
+  if (opt('--cache')) {
+    try { const b = await readFile(opt('--cache')); prev = JSON.parse((opt('--cache').endsWith('.gz') ? gunzipSync(b) : b).toString('utf8')); }
+    catch { console.log('Önbellek yok, tam çekim yapılacak.'); }
+    if (prev && prev.companyId && prev.companyId !== companyId) prev = null; // different VA/company
+  }
+  raw = slimSnapshot(await fetchSnapshot({ client, companyId, vaMode, prev, flightDays: settings.flightDays, budgetMs: Number(env.FETCH_BUDGET_MS || 420_000) }));
   console.log(`API çağrısı: ${raw.apiCalls}`);
   if (flag('--save-raw')) await writeFile(join(root, 'raw-snapshot.json'), JSON.stringify(raw));
 }
