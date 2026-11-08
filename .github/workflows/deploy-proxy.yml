@@ -22,8 +22,14 @@ jobs:
 
       - name: Ensure a workers.dev subdomain exists
         run: |
-          api="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain"
-          sub=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "$api" | jq -r '.result.subdomain // empty')
+          acct=$(printf '%s' "$CF_ACCOUNT" | tr -d '[:space:]')
+          tok=$(printf '%s' "$CF_TOKEN" | tr -d '[:space:]')
+          echo "account id uzunluğu: ${#acct} (32 olmalı)"
+          CF_TOKEN="$tok"
+          api="https://api.cloudflare.com/client/v4/accounts/$acct/workers/subdomain"
+          get=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "$api" || true)
+          echo "$get" | jq -c '{success, errors, result}' || echo "$get" | head -c 300
+          sub=$(echo "$get" | jq -r '.result.subdomain // empty' 2>/dev/null || true)
           if [ -z "$sub" ]; then
             for cand in "${OWNER,,}" "${OWNER,,}-onair" "${OWNER,,}-onair-$RANDOM"; do
               r=$(curl -s -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" "$api" -d "{\"subdomain\":\"$cand\"}")
