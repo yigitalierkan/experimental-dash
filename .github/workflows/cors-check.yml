@@ -1,0 +1,24 @@
+name: CORS check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Preflight + GET with browser Origin
+        env:
+          ONAIR_API_KEY: ${{ secrets.ONAIR_API_KEY }}
+          ONAIR_VA_ID: ${{ secrets.ONAIR_VA_ID }}
+        run: |
+          O="https://${{ github.repository_owner }}.github.io"
+          U="https://server1.onair.company/api/v1/virtual_airlines/$ONAIR_VA_ID"
+          echo "== OPTIONS (preflight)"
+          curl -s -o /dev/null -D - -X OPTIONS "$U" -H "Origin: $O" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: oa-apikey" | grep -i -E "^HTTP|access-control|vary" || true
+          echo "== GET"
+          curl -s -o /dev/null -D - "$U" -H "Origin: $O" -H "oa-apikey: $ONAIR_API_KEY" | grep -i -E "^HTTP|access-control|retry-after|x-rate|ratelimit" || true
