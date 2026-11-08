@@ -1,0 +1,62 @@
+name: Update dashboard
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # her saat başı (UTC, :17)
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Fetch OnAir data & compute metrics
+        env:
+          ONAIR_API_KEY: ${{ secrets.ONAIR_API_KEY }}
+          ONAIR_COMPANY_ID: ${{ secrets.ONAIR_COMPANY_ID }}
+          HOLDING_MODE: ${{ vars.HOLDING_MODE || 'auto' }}
+          IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
+          FLIGHT_DAYS: ${{ vars.FLIGHT_DAYS || '30' }}
+        run: |
+          if [ -z "$ONAIR_API_KEY" ] || [ -z "$ONAIR_COMPANY_ID" ]; then
+            echo "::warning::ONAIR_API_KEY / ONAIR_COMPANY_ID secret'ları yok — demo veriyle yayınlanıyor."
+            node scripts/build.mjs --mock
+          else
+            node scripts/build.mjs
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

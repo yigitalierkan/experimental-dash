@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OnAir Rotalar</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%9C%88%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="top">
+  <h1 id="title">OnAir Dashboard</h1>
+  <nav><a href="index.html">Filo</a><a href="routes.html" class="active">Rotalar</a></nav>
+  <span class="updated" id="updated"></span>
+</header>
+<main>
+  <section class="kpis" id="kpis"></section>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Rota / havalimanı / tescil ara…">
+    <label><input type="checkbox" id="showFleet" checked> Uçak konumlarını göster</label>
+    <label><input type="checkbox" id="onlyAssigned"> Sadece uçak atanmış rotalar</label>
+  </div>
+  <div class="routes-layout">
+    <div id="map"></div>
+    <aside class="side">
+      <div class="card detail" id="detail" hidden></div>
+      <div id="list"></div>
+    </aside>
+  </div>
+  <section class="card" style="margin-top:16px">
+    <div class="card-head"><h2>Rotalara tanımlı uçaklar</h2></div>
+    <p class="hint">Her satır bir rota–uçak eşleşmesi. Performans değerleri Filo sayfasıyla aynı kaynaktan (son 7 gün, 30 günlük kâr öngörüsü).</p>
+    <div class="table-wrap" id="assignTable"></div>
+  </section>
+</main>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script type="module" src="assets/routes.js"></script>
+</body>
+</html>

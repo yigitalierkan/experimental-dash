@@ -1,0 +1,14 @@
+{
+  "name": "onair-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OnAir Company filo, rota ve finans dashboard'u (GitHub Pages + Actions)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "mock": "node scripts/build.mjs --mock",
+    "serve": "npx --yes http-server site -p 8080 -c-1",
+    "test": "node --test test/*.test.mjs"
+  }
+}

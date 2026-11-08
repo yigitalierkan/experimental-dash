@@ -1,0 +1,4 @@
+node_modules/
+site/data/
+raw-snapshot.json
+.DS_Store

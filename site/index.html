@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OnAir Filo Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%9C%88%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="top">
+  <h1 id="title">OnAir Dashboard</h1>
+  <nav><a href="index.html" class="active">Filo</a><a href="routes.html">Rotalar</a></nav>
+  <span class="updated" id="updated"></span>
+</header>
+<main>
+  <section class="kpis" id="kpis"></section>
+
+  <div class="controls">
+    <label>Projeksiyon süresi
+      <span class="seg" id="horizon">
+        <button data-v="1">1 hafta</button><button data-v="4.2857" aria-pressed="true">30 gün</button><button data-v="13.0357">90 gün</button><button data-v="52.1429">1 yıl</button>
+      </span>
+    </label>
+    <label>Kullanım varsayımı
+      <span class="seg" id="basis">
+        <button data-v="d7" aria-pressed="true" title="Son 7 gündeki gerçek blok saatleri">Son 7 gün</button>
+        <button data-v="d30" title="Son 30 gündeki gerçek blok saatleri">Son 30 gün</button>
+        <button data-v="onair" title="OnAir'in tip için verdiği ortalama haftalık saat">OnAir ortalaması</button>
+      </span>
+    </label>
+    <input type="search" id="q" placeholder="Tescil / tip / havalimanı ara…">
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <div class="card-head"><h2>Uçak başına öngörülen kâr</h2></div>
+      <p class="hint" id="profitHint"></p>
+      <div class="legend"><span><i style="background:var(--pos)"></i>Kâr</span><span><i style="background:var(--neg)"></i>Zarar</span></div>
+      <div id="profitBars"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Kullanım oranı (son 7 gün)</h2></div>
+      <p class="hint">Blok saati ÷ 168 saat. Üzerine gelince günlük uçuş ve turnaround görünür.</p>
+      <div id="utilBars"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>24 saattir uçmayan uçaklar</h2><span class="muted" id="idleCount"></span></div>
+    <p class="hint">Son uçuşunun bitişinden bu yana ≥ <span id="idleH">24</span> saat geçmiş ve şu an uçuşta olmayan uçaklar.</p>
+    <div class="table-wrap" id="idleTable"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Turnover / kullanım</h2></div>
+    <p class="hint">Turnover = günlük uçuş (rotasyon) sayısı. Turnaround = iki uçuş arası ortalama yerde kalma süresi (48 saatten kısa aralar).</p>
+    <div class="table-wrap" id="turnTable"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Gelir / gider / kâr projeksiyonu</h2></div>
+    <p class="hint" id="projHint"></p>
+    <div class="table-wrap" id="projTable"></div>
+  </section>
+</main>
+<footer>Veriler OnAir API'den GitHub Actions ile periyodik olarak çekilir. Projeksiyon modeli için README'ye bakın.</footer>
+<script type="module" src="assets/dashboard.js"></script>
+</body>
+</html>
