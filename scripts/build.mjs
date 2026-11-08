@@ -31,17 +31,20 @@ if (flag('--mock')) {
   raw = JSON.parse(await readFile(opt('--raw'), 'utf8'));
 } else {
   const apiKey = env.ONAIR_API_KEY?.trim();
-  const companyId = env.ONAIR_COMPANY_ID?.trim();
+  const vaId = env.ONAIR_VA_ID?.trim();
+  const companyId = vaId || env.ONAIR_COMPANY_ID?.trim();
+  const vaMode = !!vaId;
+  console.log(`Mod: ${vaMode ? 'Virtual Airline' : 'Company'}`);
   if (!apiKey || !companyId) {
-    console.error('ONAIR_API_KEY ve ONAIR_COMPANY_ID ortam değişkenleri gerekli (ya da --mock).');
+    console.error('ONAIR_API_KEY ve ONAIR_VA_ID (veya ONAIR_COMPANY_ID) gerekli (ya da --mock).');
     process.exit(1);
   }
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  console.log(`Secret kontrolü: COMPANY_ID uzunluk=${companyId.length} uuid=${UUID.test(companyId)} | API_KEY uzunluk=${apiKey.length} uuid=${UUID.test(apiKey)} | aynı değer=${apiKey === companyId}`);
-  if (!UUID.test(companyId)) { console.error('ONAIR_COMPANY_ID UUID formatında değil (ör. 1a2b3c4d-....). Tırnak/boşluk/fazla karakter olmadığından emin ol.'); process.exit(1); }
-  if (apiKey === companyId) { console.error('ONAIR_API_KEY ile ONAIR_COMPANY_ID aynı — ikisi farklı değerler olmalı.'); process.exit(1); }
+  console.log(`Secret kontrolü: ID uzunluk=${companyId.length} uuid=${UUID.test(companyId)} | API_KEY uzunluk=${apiKey.length} uuid=${UUID.test(apiKey)} | aynı değer=${apiKey === companyId}`);
+  if (!UUID.test(companyId)) { console.error('VA/Company ID UUID formatında değil (ör. 1a2b3c4d-....). Tırnak/boşluk/fazla karakter olmadığından emin ol.'); process.exit(1); }
+  if (apiKey === companyId) { console.error('ONAIR_API_KEY ile ID aynı — ikisi farklı değerler olmalı.'); process.exit(1); }
   const client = new OnAirClient({ apiKey, baseUrl: env.ONAIR_BASE_URL || undefined });
-  raw = await fetchSnapshot({ client, companyId, flightDays: settings.flightDays });
+  raw = await fetchSnapshot({ client, companyId, vaMode, flightDays: settings.flightDays });
   console.log(`API çağrısı: ${raw.apiCalls}`);
   if (flag('--save-raw')) await writeFile(join(root, 'raw-snapshot.json'), JSON.stringify(raw));
 }

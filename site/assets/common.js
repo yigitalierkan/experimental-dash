@@ -115,6 +115,6 @@ export function demoBanner(d) {
   const b = document.createElement('div');
   b.className = 'card';
   b.style.borderColor = 'var(--warning)';
-  b.innerHTML = '<b>Demo verisi gösteriliyor.</b> <span class="muted">Repo ayarlarında ONAIR_API_KEY ve ONAIR_COMPANY_ID secret\'larını ekleyip "Update dashboard" iş akışını çalıştırın.</span>';
+  b.innerHTML = '<b>Demo verisi gösteriliyor.</b> <span class="muted">Repo ayarlarında ONAIR_API_KEY ve ONAIR_VA_ID secret\'larını ekleyip "Update dashboard" iş akışını çalıştırın.</span>';
   document.querySelector('main').prepend(b);
 }

@@ -94,20 +94,37 @@ export function asArray(v) {
 }
 
 /** Download everything the dashboard needs. Returns a "raw" snapshot object. */
-export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFlightPages = 60, log = console.log }) {
+export async function fetchSnapshot({ client, companyId, vaMode = false, flightDays = 30, maxFlightPages = 60, log = console.log }) {
   const C = `/companies/${companyId}`;
-  const raw = { fetchedAt: new Date().toISOString(), companyId };
+  const raw = { fetchedAt: new Date().toISOString(), companyId, mode: vaMode ? 'va' : 'company' };
 
-  log('→ company');
-  try {
-    raw.company = await client.get(C);
-  } catch (e) {
-    throw new Error(`Şirket bilgisi alınamadı → ${e.message}\n` +
-      'Kontrol et: ONAIR_COMPANY_ID doğru şirket UUID\'si mi ve ONAIR_API_KEY bu şirkete mi ait? ' +
-      '(OnAir client → Company → Settings sayfasındaki Company Id ve API Key)');
+  if (vaMode) {
+    log('→ virtual airline');
+    try {
+      raw.va = await client.get(`/virtual_airlines/${companyId}`);
+    } catch (e) {
+      throw new Error(`Virtual Airline bilgisi alınamadı → ${e.message}\n` +
+        'Kontrol et: ONAIR_VA_ID, VA\'nın Id\'si mi ve ONAIR_API_KEY bu VA\'nın API key\'i mi? (OnAir client → Virtual Airline → Settings)');
+    }
+    log(`  yapı: ${shape(raw.va)}`);
+    // VA'lar OnAir'de bir şirket kaydına sahip; isim/kod alanları VA nesnesinde de bulunur
+    raw.company = { Name: raw.va?.Name, AirlineCode: raw.va?.AirlineCode, Level: raw.va?.Level, Reputation: raw.va?.Reputation };
+    log(`  VA: ${raw.va?.Name ?? '?'} (${raw.va?.AirlineCode ?? ''})`);
+    raw.company = { ...raw.company, ...((await client.get(C, {}, { optional: true })) || {}) };
+    log('→ members');
+    raw.members = asArray(await client.get(`/virtual_airlines/${companyId}/members`, {}, { optional: true }));
+    log(`  ${raw.members.length} üye`);
+  } else {
+    log('→ company');
+    try {
+      raw.company = await client.get(C);
+    } catch (e) {
+      throw new Error(`Şirket bilgisi alınamadı → ${e.message}\n` +
+        'Kontrol et: ONAIR_COMPANY_ID doğru şirket UUID\'si mi ve ONAIR_API_KEY bu şirkete mi ait? ' +
+        'Şirketi Virtual Airline olarak işletiyorsanız ONAIR_VA_ID secret\'ını kullanın.');
+    }
+    log(`  şirket: ${raw.company?.Name ?? '?'} (${raw.company?.AirlineCode ?? ''})`);
   }
-  log(`  yapı: ${shape(raw.company)}`);
-  if (raw.company?.Name) log(`  şirket: ${raw.company.Name} (${raw.company.AirlineCode ?? ''})`);
 
   log('→ fleet');
   const fleetRaw = await client.get(`${C}/fleet`);
@@ -117,8 +134,6 @@ export async function fetchSnapshot({ client, companyId, flightDays = 30, maxFli
   if (!raw.fleet.length) {
     log('  ! Filo boş. Dashboard yapısı:');
     log('    ' + shape(await client.get(`${C}/dashboard`, {}, { optional: true })));
-    log('  ! Company ID yerine bir Virtual Airline ID mi girildi? VA olarak deneniyor:');
-    log('    ' + shape(await client.get(`/virtual_airlines/${companyId}`, {}, { optional: true })));
   }
 
   log('→ flights (sayfalı)');

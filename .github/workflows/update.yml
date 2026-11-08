@@ -33,13 +33,14 @@ jobs:
       - name: Fetch OnAir data & compute metrics
         env:
           ONAIR_API_KEY: ${{ secrets.ONAIR_API_KEY }}
+          ONAIR_VA_ID: ${{ secrets.ONAIR_VA_ID }}
           ONAIR_COMPANY_ID: ${{ secrets.ONAIR_COMPANY_ID }}
           HOLDING_MODE: ${{ vars.HOLDING_MODE || 'auto' }}
           IDLE_HOURS: ${{ vars.IDLE_HOURS || '24' }}
           FLIGHT_DAYS: ${{ vars.FLIGHT_DAYS || '30' }}
         run: |
-          if [ -z "$ONAIR_API_KEY" ] || [ -z "$ONAIR_COMPANY_ID" ]; then
-            echo "::warning::ONAIR_API_KEY / ONAIR_COMPANY_ID secret'ları yok — demo veriyle yayınlanıyor."
+          if [ -z "$ONAIR_API_KEY" ] || { [ -z "$ONAIR_VA_ID" ] && [ -z "$ONAIR_COMPANY_ID" ]; }; then
+            echo "::warning::ONAIR_API_KEY / ONAIR_VA_ID secret'ları yok — demo veriyle yayınlanıyor."
             node scripts/build.mjs --mock
           else
             node scripts/build.mjs

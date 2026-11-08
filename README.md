@@ -19,8 +19,9 @@ API anahtarı yalnızca GitHub Actions secret'ı olarak kullanılır; tarayıcı
 ## Kurulum
 
 1. **Settings → Secrets and variables → Actions → Secrets**
-   - `ONAIR_API_KEY` — OnAir client'ta şirket ayarlarındaki API key
-   - `ONAIR_COMPANY_ID` — şirket UUID'si
+   - `ONAIR_API_KEY` — **Virtual Airline**'ın API key'i (OnAir client → Virtual Airline → Settings)
+   - `ONAIR_VA_ID` — Virtual Airline UUID'si (aynı ekranda)
+   - *(Alternatif, şirket modu)* `ONAIR_COMPANY_ID` + şirket API key'i. `ONAIR_VA_ID` varsa o kullanılır.
 2. (Opsiyonel) **Variables**
    - `HOLDING_MODE` — `auto` (varsayılan) | `own` | `lease` | `rent`
    - `IDLE_HOURS` — "uçmamış" eşiği, varsayılan `24`
@@ -31,8 +32,12 @@ Pages adresi: `https://<kullanıcı>.github.io/<repo>/`
 
 ## Kullanılan endpoint'ler
 
+VA modunda filo/uçuş/kasa uç noktaları `/companies/{vaId}/...` ile çağrılır (OnAir'de VA aynı zamanda bir şirket kaydıdır).
+
 | Endpoint | Amaç |
 |---|---|
+| `GET /virtual_airlines/{vaId}` | VA adı/kodu (VA modu) |
+| `GET /virtual_airlines/{vaId}/members` | VA üyeleri (VA modu) |
 | `GET /companies/{id}` | şirket adı/kodu |
 | `GET /companies/{id}/fleet` | filo, durum, konum |
 | `GET /companies/{id}/flights?startIndex&limit` | son `FLIGHT_DAYS` günün uçuşları (sayfalı) |
